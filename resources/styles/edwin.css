@@ -1,0 +1,84 @@
+EdwinToolBar {
+    background: linear-gradient(to bottom, #f9fbfa, #efefef);
+    border-color: #dadada;
+    padding: 12px;
+    box-shadow: 0 1px #f7f7f7;
+}
+EdwinToolBarStyleChooser > .button {
+    padding: 0 4px 0 6px;
+    box-shadow: inset 1px 1px white, 1px 1px white;
+}
+EdwinToolBarSizeChooser > .button {
+    padding: 0 4px 0 6px;
+    border-width: 1px 1px 1px 0;
+    border-color: #c5c5c5;
+    border-top-color: #bababa;
+    background-image: linear-gradient(to bottom, #f0f0f0 0%, #f6f7f8 100%);
+    box-shadow: 1px 1px white;
+}
+EdwinToolBarSizeChooser > .entry {
+    padding: 0 1px 0 8px;
+    border-width: 1px 0 1px 1px;
+    border-color: #c5c5c5;
+    border-left-color: #bababa;
+    border-top-color: #bababa;
+    background-image: linear-gradient(to bottom, #f0f0f0 0%, #f6f7f8 100%);
+    background-color: #f6f7f8;
+    box-shadow: 0 1px white;
+}
+EdwinToolBarColorChooser {
+    border-width: 1px 1px 1px 0;
+    box-shadow: inset 0 1px white, 1px 1px white;
+}
+EdwinToolBarButton,
+EdwinToolBarModeButton > .button {
+    padding-left: 7px;
+    padding-right: 7px;
+    box-shadow: inset 1px 1px white, 1px 1px white;
+}
+EdwinToolBarFontChooser {
+    border-width: 1px 0 1px 1px;
+    box-shadow: inset 1px 1px white, 0 1px white;
+}
+EdwinToolBarButton,
+EdwinToolBarFontChooser,
+EdwinToolBarColorChooser,
+EdwinToolBarModeButton > .button,
+EdwinToolBarStyleChooser > .button {
+    border-color: #c5c5c5;
+    border-left-color: #d2d2d2;
+    border-top-color: #d2d2d2;
+    background-image: none;
+    background-color: #f6f7f8;
+}
+EdwinToolBarModeButton:insensitive,
+EdwinToolBarModeButton > .button:insensitive,
+EdwinToolBarStyleChooser > .button:insensitive {
+    color: #a7a7a7;
+    border-color: #dfdfdf;
+    border-left-color: #e5e5e5;
+    border-top-color: #e5e5e5;
+    background-image: none;
+    background-color: transparent;
+    box-shadow: inset 1px 1px #fbfbfb, 1px 1px #fbfbfb;
+}
+EdwinToolBarButton:checked,
+EdwinToolBarButton:active,
+EdwinToolBarModeButton > .button:checked,
+EdwinToolBarModeButton > .button:active {
+    border-color: #b6b6b6;
+    background-color: #ebebeb;
+    box-shadow: inset 0 0 3px #dedede, 1px 1px white;
+}
+EdwinStatusBar > .frame {
+    border-width: 1px 0 0 0;
+    border-color: #dadada;
+    box-shadow: inset 0 1px #f7f7f7;
+}
+EdwinStatusMenuButton {
+    padding: 1px 8px 2px 6px;
+    border-width: 1px 0 0 0;
+    border-color: #dadada;
+    box-shadow: inset 0 1px #f7f7f7;
+    outline-width: 0;
+}

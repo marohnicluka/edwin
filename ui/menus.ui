@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <menu id="AppMenu">
+    <item>
+      <attribute name="label" translatable="yes">Preferences</attribute>
+      <attribute name="action">win.Preferences</attribute>
+    </item>
+  </menu>
+</interface>

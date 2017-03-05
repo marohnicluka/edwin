@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/pantheon/edwin">
+    <!-- Menus -->
+    <file preprocess="xml-stripblanks">ui/menus.ui</file>
+    <file>resources/styles/edwin.css</file>
+    <!-- Text tools -->
+    <file>resources/icons/text-tools/aligned-left.png</file>
+    <file>resources/icons/text-tools/aligned-right.png</file>
+    <file>resources/icons/text-tools/bold.png</file>
+    <file>resources/icons/text-tools/centered.png</file>
+    <file>resources/icons/text-tools/enumerate.png</file>
+    <file>resources/icons/text-tools/italic.png</file>
+    <file>resources/icons/text-tools/itemize.png</file>
+    <file>resources/icons/text-tools/justified.png</file>
+    <file>resources/icons/text-tools/spelling.png</file>
+    <file>resources/icons/text-tools/strikethrough.png</file>
+    <file>resources/icons/text-tools/underline.png</file>
+    <!-- Equation editor -->
+    <file>resources/icons/equation-editor/accent.png</file>
+    <file>resources/icons/equation-editor/array.png</file>
+    <file>resources/icons/equation-editor/arrows.png</file>
+    <file>resources/icons/equation-editor/dots.png</file>
+    <file>resources/icons/equation-editor/fraction.png</file>
+    <file>resources/icons/equation-editor/fraction-no-line.png</file>
+    <file>resources/icons/equation-editor/function.png</file>
+    <file>resources/icons/equation-editor/greek.png</file>
+    <file>resources/icons/equation-editor/identifier.png</file>
+    <file>resources/icons/equation-editor/integral.png</file>
+    <file>resources/icons/equation-editor/integral-below.png</file>
+    <file>resources/icons/equation-editor/integral-belowabove.png</file>
+    <file>resources/icons/equation-editor/limit.png</file>
+    <file>resources/icons/equation-editor/operators.png</file>
+    <file>resources/icons/equation-editor/parens.png</file>
+    <file>resources/icons/equation-editor/punctuation.png</file>
+    <file>resources/icons/equation-editor/relations.png</file>
+    <file>resources/icons/equation-editor/root.png</file>
+    <file>resources/icons/equation-editor/sequence.png</file>
+    <file>resources/icons/equation-editor/spacer.png</file>
+    <file>resources/icons/equation-editor/square-root.png</file>
+    <file>resources/icons/equation-editor/subscript.png</file>
+    <file>resources/icons/equation-editor/subsuperscript.png</file>
+    <file>resources/icons/equation-editor/sum.png</file>
+    <file>resources/icons/equation-editor/sum-below.png</file>
+    <file>resources/icons/equation-editor/sum-belowabove.png</file>
+    <file>resources/icons/equation-editor/superscript.png</file>
+    <file>resources/icons/equation-editor/symbols.png</file>
+    <file>resources/icons/equation-editor/text.png</file>
+    <file>resources/icons/equation-editor/variables.png</file>
+  </gresource>
+</gresources>
