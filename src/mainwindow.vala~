@@ -135,7 +135,7 @@ namespace Edwin {
         }
         
         private void init_layout () {
-            toolbar = new ToolBar (this);
+            toolbar = new ToolBar ();
             statusbar = new StatusBar ();
             document = new Document (this);
             var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);

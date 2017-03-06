@@ -25,8 +25,7 @@ namespace Edwin {
         unowned Document doc;
 
         public TextView (Document doc) {
-            this.doc = doc;
-        }
+            this.doc = doc;        }
 
         public override void draw_layer (Gtk.TextViewLayer layer, Cairo.Context cr) {
             cr.save ();

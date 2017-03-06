@@ -174,8 +174,6 @@ namespace Edwin {
             }
         }
         
-        unowned MainWindow main_window;
-        
         StyleChooser style_chooser;
         FontChooser font_button;
         ColorChooser color_button;
@@ -186,14 +184,11 @@ namespace Edwin {
         AlignmentButton alignment_button;
         ListButton list_button;
         
-        bool has_selection = false;
-        Gtk.TextIter selection_start;
-        Gtk.TextIter selection_end;        
         bool programmatic = false;
         
         public signal void paragraph_style_selected (string id);
         public signal void paragraph_alignment_selected (Gtk.Justification alignment_type);
-        public signal void text_font_selected (Pango.FontDescription font_desc);
+        public signal void text_font_selected (string font_name);
         public signal void text_color_selected (Gdk.RGBA color);
         public signal void text_size_selected (int size);
         public signal void text_bold_toggled (bool active);
@@ -203,12 +198,7 @@ namespace Edwin {
         public signal void return_focus_to_document ();
         public signal void text_font_changed ();
         
-        public unowned Gtk.TextBuffer buffer {
-            get { return main_window.document.buffer; }
-        }
-        
-        public ToolBar (MainWindow main_window) {
-            this.main_window = main_window;
+        public ToolBar () {
             create_layout ();
             update_font_name ();
             connect_signals ();
@@ -264,18 +254,11 @@ namespace Edwin {
                 debug ("User changed paragraph style to %s", id);
                 paragraph_style_selected (id);
             });
-            font_button.clicked.connect (() => {
-                has_selection = buffer.get_selection_bounds (out selection_start, out selection_end);
-            });
             font_button.font_set.connect (() => {
-                if (has_selection) {
-                    buffer.select_range (selection_start, selection_end);
-                    has_selection = false;
-                }
                 update_font_properties ();
                 var name = font_button.get_font_name ();
                 debug ("User changed text font to %s", name);
-                text_font_selected (font_button.font_desc);
+                text_font_selected (name);
             });
             font_button.notify["font-name"].connect (() => {
                 set_font_button_tooltip ();
@@ -464,15 +447,6 @@ namespace Edwin {
             font_button.set_font_name (name);
         }
         
-        public void set_underline_state (bool state) {
-            begin_programmatic ();
-            button_underline.active = state;
-        }
-        
-        public bool get_underline_state () {
-            return button_underline.active;
-        }
-
     }
     
 }

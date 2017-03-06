@@ -51,7 +51,7 @@ namespace Edwin {
             app_icon = "accessories-text-editor";
             app_launcher = exec_name + ".desktop";
             application_id = "org.pantheon." + exec_name;
-            main_url = "https://launchpad.net/edwin";
+            main_url = "https://github.com/marohnicluka/edwin";
             about_authors = { "Luka Marohnić <marohnicluka@gmail.com>" };
             about_license_type = Gtk.License.GPL_3_0;
         }
@@ -160,13 +160,7 @@ namespace Edwin {
 		}
 		
 		protected override void open (File[] files, string hint) {
-            var window = get_last_window ();
-            foreach (var file in files) {
-                var doc = Document.open (file);
-                if (doc != null) {
-                    window.show_document (doc);
-                }
-            }
+
         }
 		
 		const OptionEntry[] entries = {
