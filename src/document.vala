@@ -50,9 +50,6 @@ namespace Edwin {
         uint scroll_handler = 0;
         uint update_toolbar_font_description_handler = 0;
         uint section_break_serial = 0;
-        uint font_family_tag_serial = 0;
-        uint text_size_tag_serial = 0;
-        uint text_color_tag_serial = 0;
         List<SectionBreak?> section_breaks = null;
         Gtk.TextAttributes default_attributes;
         /* tags */
@@ -67,6 +64,9 @@ namespace Edwin {
         unowned Gtk.TextTag tag_itemize;
         unowned Gtk.TextTag tag_skip;
         unowned Gtk.TextTag tag_no_page_break;
+        HashTable<string, unowned Gtk.TextTag> font_family_tags;
+        HashTable<int, unowned Gtk.TextTag> text_size_tags;
+        HashTable<Gdk.RGBA?, unowned Gtk.TextTag> text_color_tags;
 
         /* often used */
         public unowned Gtk.TextBuffer buffer {
@@ -138,6 +138,12 @@ namespace Edwin {
             /* internal tags */
             tag_skip = buffer.create_tag ("internal:skip");
             tag_no_page_break = buffer.create_tag ("internal:no-page-break");
+            font_family_tags = new HashTable<string, unowned Gtk.TextTag> (str_hash, str_equal);
+            text_size_tags = new HashTable<int, unowned Gtk.TextTag> (direct_hash, direct_equal);
+            text_color_tags = new HashTable<Gdk.RGBA?, unowned Gtk.TextTag> (
+                (key) => { return key.hash (); },
+                (a, b) => { return a.equal (b); }
+            );
         }
 
 /*************\
@@ -173,13 +179,9 @@ namespace Edwin {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
                 remove_tags ("font-family", start, end);
-                var tag = create_font_family_tag ();
-                tag.family = font_desc.get_family ();
-                buffer.apply_tag (tag, start, end);
+                buffer.apply_tag (get_font_family_tag (font_desc.get_family ()), start, end);
                 remove_tags ("text-size", start, end);
-                tag = create_text_size_tag ();
-                tag.size = font_desc.get_size ();
-                buffer.apply_tag (tag, start, end);
+                buffer.apply_tag (get_text_size_tag (font_desc.get_size ()), start, end);
                 if (font_desc.get_weight () == Pango.Weight.BOLD) {
                     buffer.apply_tag_by_name ("bold", start, end);
                 } else {
@@ -197,9 +199,7 @@ namespace Edwin {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
                 remove_tags ("text-size", start, end);
-                var tag = create_text_size_tag ();
-                tag.size = size * Pango.SCALE;
-                buffer.apply_tag (tag, start, end);
+                buffer.apply_tag (get_text_size_tag (size * Pango.SCALE), start, end);
             }
         }
         
@@ -207,9 +207,7 @@ namespace Edwin {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
                 remove_tags ("text-color", start, end);
-                var tag = create_text_color_tag ();
-                tag.foreground_rgba = color;
-                buffer.apply_tag (tag, start, end);
+                buffer.apply_tag (get_text_color_tag (color), start, end);
             }
         }
 
@@ -372,19 +370,37 @@ namespace Edwin {
         private void set_defaults () {
             toolbar.set_text_font_desc (default_attributes.font);
         }
+        
+        private unowned Gtk.TextTag get_font_family_tag (string family) {
+            unowned Gtk.TextTag? tag = font_family_tags.lookup (family);
+            if (tag == null) {
+                tag = buffer.create_tag (@"font-family:$family",
+                    "family", family);
+                font_family_tags.insert (family, tag);
+            }
+            return tag;
+        }
 
-        private unowned Gtk.TextTag create_text_size_tag () {
-            return buffer.create_tag (@"text-size-%u".printf (text_size_tag_serial++));
+        private unowned Gtk.TextTag get_text_size_tag (int size) {
+            unowned Gtk.TextTag? tag = text_size_tags.lookup (size);
+            if (tag == null) {
+                tag = buffer.create_tag (@"text-size:%d".printf (size / Pango.SCALE),
+                    "size", size);
+                text_size_tags.insert (size, tag);
+            }
+            return tag;
         }
-        
-        private unowned Gtk.TextTag create_font_family_tag () {
-            return buffer.create_tag (@"font-family-%u".printf (font_family_tag_serial++));
+
+        private unowned Gtk.TextTag get_text_color_tag (Gdk.RGBA color) {
+            unowned Gtk.TextTag? tag = text_color_tags.lookup (color);
+            if (tag == null) {
+                tag = buffer.create_tag (@"text-color:%s".printf (color.to_string ()),
+                    "foreground-rgba", color);
+                text_color_tags.insert (color, tag);
+            }
+            return tag;
         }
-        
-        private unowned Gtk.TextTag create_text_color_tag () {
-            return buffer.create_tag (@"text-color-%u".printf (text_color_tag_serial++));
-        }
-        
+
         private void remove_tags (string group_id, Gtk.TextIter start, Gtk.TextIter end) {
             buffer.tag_table.@foreach ((tag) => {
                 if (tag.name != null && tag.name.has_prefix (group_id)) {

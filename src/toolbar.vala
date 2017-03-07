@@ -84,6 +84,11 @@ namespace Edwin {
                 var label = (Gtk.Label) box.get_children ().nth_data (0);
                 label.xalign = 0.0f;
                 Utils.apply_stylesheet (label, "* {\npadding-left: 0;\n}");
+                string[] ALLOWED_FACE_NAMES = {"regular", "bold", "italic", "bold italic", ""};
+                set_filter_func ((family, face) => {
+                    var face_name = face.get_face_name ().down ();
+                    return face_name in ALLOWED_FACE_NAMES;
+                });
             }
         }
         
@@ -225,14 +230,6 @@ namespace Edwin {
             font_box.pack_start (color_button, false);
             font_box.set_size_request (CHOOSER_WIDTH, -1);
             set_font_button_tooltip ();
-            font_button.set_filter_func ((family, face) => {
-                var desc = face.describe ();
-                var weight = desc.get_weight ();
-                var style = desc.get_style ();
-                return
-                    (weight == Pango.Weight.BOLD || weight == Pango.Weight.NORMAL) &&
-                    (style == Pango.Style.ITALIC || style == Pango.Style.NORMAL);
-            });
             add_separator ();
             add_widget (font_box);
             size_chooser = new SizeChooser ();
