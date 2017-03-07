@@ -48,10 +48,9 @@ namespace Edwin {
         unowned Gtk.TextMark insert_start_mark;
         int cursor_movement_direction = 0;
         uint scroll_handler = 0;
-        uint update_toolbar_font_description_handler = 0;
+        uint update_toolbar_handler = 0;
         uint section_break_serial = 0;
         List<SectionBreak?> section_breaks = null;
-        Gtk.TextAttributes default_attributes;
         /* tags */
         unowned Gtk.TextTag tag_bold;
         unowned Gtk.TextTag tag_italic;
@@ -105,7 +104,6 @@ namespace Edwin {
         private void create_widgets () {
             text_view = new TextView (this);
             text_view_box = new Gtk.EventBox ();
-            default_attributes = text_view.get_default_attributes ();
             text_view.margin = Utils.to_pixels (Utils.INCH, OUTER_MARGIN);
             text_view.wrap_mode = Gtk.WrapMode.WORD_CHAR;
             text_view.left_margin = paper_size.left_margin;
@@ -308,7 +306,7 @@ namespace Edwin {
             }
             cursor_movement_direction = 0;
             schedule_scroll_to_cursor ();        
-            schedule_update_toolbar_font_description ();
+            schedule_update_toolbar ();
         }
 
         private void on_delete_range (Gtk.TextIter start, Gtk.TextIter end) {
@@ -343,32 +341,53 @@ namespace Edwin {
 |* PRIVATE METHODS *|
 \*******************/
 
-        private void schedule_update_toolbar_font_description () {
-            if (update_toolbar_font_description_handler != 0) {
-                Source.remove (update_toolbar_font_description_handler);
+        private void schedule_update_toolbar () {
+            if (update_toolbar_handler != 0) {
+                Source.remove (update_toolbar_handler);
             }
-            update_toolbar_font_description_handler = Timeout.add (100, () => {
-                update_toolbar_font_description ();
-                update_toolbar_font_description_handler = 0;
+            update_toolbar_handler = Timeout.add (100, () => {
+                update_toolbar ();
+                update_toolbar_handler = 0;
                 return false;
             });
         }
+        
+        private Gtk.TextAttributes get_attributes (Gtk.TextIter where) {
+            var attributes = text_view.get_default_attributes ();
+            var iter = where;
+            if (iter.backward_char ()) {
+                iter.get_attributes (attributes);
+            }
+            return attributes;
+        }
+        
+        private Gdk.RGBA get_text_color (Gtk.TextIter where) {
+            var iter = where;
+            Gdk.RGBA color = {0.0, 0.0, 0.0, 1.0};
+            if (!iter.backward_char ()) {
+                return color;
+            }
+            text_color_tags.@foreach ((col, tag) => {
+                if (iter.has_tag (tag)) {
+                    color = col;
+                }
+            });
+            return color;
+        }
 
-        private void update_toolbar_font_description () {
+        private void update_toolbar () {
             if (buffer.has_selection) {
             
             } else {
-                var iter = cursor;
-                var attributes = text_view.get_default_attributes ();
-                if (iter.backward_char ()) {
-                    iter.get_attributes (attributes);
-                }
+                var attributes = get_attributes (cursor);
                 toolbar.set_text_font_desc (attributes.font);
+                toolbar.set_underline_state (attributes.appearance.underline != 0);
+                toolbar.set_text_color (get_text_color (cursor));
             }
         }
-
+        
         private void set_defaults () {
-            toolbar.set_text_font_desc (default_attributes.font);
+            toolbar.set_text_font_desc (text_view.get_default_attributes ().font);
         }
         
         private unowned Gtk.TextTag get_font_family_tag (string family) {
@@ -408,7 +427,7 @@ namespace Edwin {
                 }
             });
         }
-
+        
         private void schedule_scroll_to_cursor () {
             Timeout.add (100, () => {
                 scroll_to_mark (buffer.get_insert ());
@@ -533,6 +552,16 @@ namespace Edwin {
 
         public new void focus () {
             text_view.grab_focus ();
+        }
+
+        public void delete_unused_tags () {
+            var iter = Gtk.TextIter ();
+            buffer.tag_table.@foreach ((tag) => {
+                buffer.get_start_iter (out iter);
+                if (!iter.has_tag (tag) && !iter.forward_to_tag_toggle (tag)) {
+                    buffer.tag_table.remove (tag);
+                }
+            });
         }
 
         public void insert_section_break (Gtk.TextIter where) {

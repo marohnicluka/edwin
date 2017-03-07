@@ -84,10 +84,10 @@ namespace Edwin {
                 var label = (Gtk.Label) box.get_children ().nth_data (0);
                 label.xalign = 0.0f;
                 Utils.apply_stylesheet (label, "* {\npadding-left: 0;\n}");
-                string[] ALLOWED_FACE_NAMES = {"regular", "bold", "italic", "bold italic", ""};
+                string[] allowed_face_names = {"regular", "bold", "italic", "bold italic", ""};
                 set_filter_func ((family, face) => {
                     var face_name = face.get_face_name ().down ();
-                    return face_name in ALLOWED_FACE_NAMES;
+                    return face_name in allowed_face_names;
                 });
             }
         }
