@@ -91,6 +91,7 @@ namespace Edwin {
             public string get_font_family () {
                 return this.label;
             }
+
         }
         
         public class ColorChooser : Gtk.ColorButton {
@@ -195,7 +196,7 @@ namespace Edwin {
         bool programmatic = false;
         
         public signal void paragraph_style_selected (string id);
-        public signal void paragraph_alignment_selected (Gtk.Justification alignment_type);
+        public signal void paragraph_alignment_selected (Gtk.Justification justification);
         public signal void font_family_selected (string family);
         public signal void text_color_selected (Gdk.RGBA color);
         public signal void text_size_selected (int size);
@@ -276,8 +277,8 @@ namespace Edwin {
                 }
                 if (!size_chooser.entry.has_focus) {
                     on_user_changed_font_size ();
+                    return_focus_to_document ();
                 }
-                return_focus_to_document ();
             });
             size_chooser.entry.activate.connect (() => {
                 on_user_changed_font_size ();
@@ -401,7 +402,7 @@ namespace Edwin {
             if (size > 100) {
                 size /= Pango.SCALE;
             }
-            size_chooser.entry.text = size.to_string ();
+            size_chooser.entry.text = size > 0 ? size.to_string () : "";
             button_bold.active = font_desc.get_weight () == Pango.Weight.BOLD;
             button_italic.active = font_desc.get_style () == Pango.Style.ITALIC;
         }

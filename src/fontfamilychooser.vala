@@ -99,6 +99,8 @@ namespace Edwin {
             font_view.headers_visible = false;
             font_view.fixed_height_mode = true;
             font_view.activate_on_single_click = false;
+            font_view.reorderable = false;
+            font_view.enable_search = false;
             font_view.get_selection ().mode = Gtk.SelectionMode.BROWSE;
             var cell = new Gtk.CellRendererText ();
             font_view.insert_column_with_attributes (-1, _("Font family"), cell, "text", 0);
@@ -116,6 +118,10 @@ namespace Edwin {
         }
         
         private void select_family (string family) {
+            if (family.length == 0) {
+                font_view.get_selection ().unselect_all ();
+                return;
+            }
             Gtk.TreeIter iter;
             var model = font_view.model;
             for (bool next = model.get_iter_first (out iter); next; next = model.iter_next (ref iter)) {

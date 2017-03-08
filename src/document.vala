@@ -33,7 +33,7 @@ namespace Edwin {
             public unowned Gtk.TextMark mark;
             public unowned Gtk.TextTag tag;
         }
-        
+
 /*************************\
 |* FIELDS AND PROPERTIES *|
 \*************************/
@@ -44,11 +44,15 @@ namespace Edwin {
         /* private fields */
         TextView text_view;
         Gtk.EventBox text_view_box;
+        GtkSpell.Checker spell_checker;
         unowned MainWindow main_window;
         unowned Gtk.TextMark insert_start_mark;
+        unowned Gtk.TextMark paste_start_mark;
+        unowned Gtk.TextMark paste_end_mark;
         int cursor_movement_direction = 0;
         bool text_properties_changed = false;
         bool insertion_in_progress = false;
+        bool pasting_in_progress = false;
         uint scroll_handler = 0;
         uint update_toolbar_handler = 0;
         uint section_break_serial = 0;
@@ -89,7 +93,7 @@ namespace Edwin {
         public Gdk.RGBA default_text_color {
             get { return text_view.get_style_context ().get_color (0); }
         }
-        
+
         /* signals */
         public signal void page_breaking_done ();
 
@@ -102,7 +106,8 @@ namespace Edwin {
             this.main_window = main_window;
             paper_size = new PaperSize.@default ();
             create_widgets ();
-            create_tags ();
+            create_spell_checker ();
+            create_tags_and_marks ();
             this.realize.connect (on_realize);
         }
 
@@ -120,8 +125,19 @@ namespace Edwin {
             text_view_box.add (text_view);
             this.add (text_view_box);
         }
+        
+        private void create_spell_checker () {
+            spell_checker = new GtkSpell.Checker ();
+            try {
+                spell_checker.set_language ("en_US");
+                //spell_checker.attach (text_view);
+            } catch (Error e) {
+                warning (e.message);
+            }
+        }
 
-        private void create_tags () {
+        private void create_tags_and_marks () {
+            /* tags */
             tag_bold = buffer.create_tag ("bold",
                 "weight", Pango.Weight.BOLD);
             tag_italic = buffer.create_tag ("italic",
@@ -147,6 +163,12 @@ namespace Edwin {
                 (key) => { return key.hash (); },
                 (a, b) => { return a.equal (b); }
             );
+            /* marks */
+            Gtk.TextIter where;
+            buffer.get_start_iter (out where);
+            insert_start_mark = buffer.create_mark (null, where, true);
+            paste_start_mark = buffer.create_mark (null, where, true);
+            paste_end_mark = buffer.create_mark (null, where, false);
         }
 
 /*************\
@@ -158,11 +180,9 @@ namespace Edwin {
 			var win = this.get_view_window ();
 			var events = win.get_events ();
 			win.set_events (events & ~Gdk.EventMask.FOCUS_CHANGE_MASK);
-            Gtk.TextIter where;
-            buffer.get_start_iter (out where);
-            insert_start_mark = buffer.create_mark (null, where, true);
             text_view.move_cursor.connect (on_move_cursor);
             text_view.key_press_event.connect (on_key_press_event);
+            text_view.paste_clipboard.connect (on_paste_clipboard);
             buffer.notify["cursor-position"].connect (on_cursor_position_changed);
             buffer.notify["has-selection"].connect (on_has_selection_changed);
             buffer.delete_range.connect (on_delete_range);
@@ -170,14 +190,30 @@ namespace Edwin {
             buffer.insert_text.connect (on_insert_text);
             buffer.mark_set.connect (on_mark_set);
             buffer.insert_text.connect_after (on_insert_text_after);
+            buffer.paste_done.connect (on_paste_done);
             toolbar.font_family_selected.connect (on_font_family_selected);
             toolbar.text_size_selected.connect (on_text_size_selected);
             toolbar.text_color_selected.connect (on_text_color_selected);
             toolbar.text_bold_toggled.connect (on_text_bold_toggled);
             toolbar.text_italic_toggled.connect (on_text_italic_toggled);
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
+            toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
         }
-        
+
+        private void on_paste_clipboard () {
+            buffer.move_mark (paste_start_mark, cursor);
+            pasting_in_progress = true;
+        }
+
+        private void on_paste_done (Gtk.Clipboard clipboard) {
+            Gtk.TextIter start, end;
+            buffer.get_iter_at_mark (out start, paste_start_mark);
+            buffer.get_iter_at_mark (out end, paste_end_mark);
+            move_to_paragraph_end (ref end);
+            apply_alignment_to_range (get_paragraph_justification (start), start, end);
+            pasting_in_progress = false;
+        }
+
         private void on_font_family_selected (string family) {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
@@ -187,7 +223,7 @@ namespace Edwin {
                 text_properties_changed = true;
             }
         }
-        
+
         private void on_text_size_selected (int size) {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
@@ -197,7 +233,7 @@ namespace Edwin {
                 text_properties_changed = true;
             }
         }
-        
+
         private void on_text_color_selected (Gdk.RGBA color) {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
@@ -220,7 +256,7 @@ namespace Edwin {
                 text_properties_changed = true;
             }
         }
-        
+
         private void on_text_italic_toggled (bool active) {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
@@ -233,7 +269,7 @@ namespace Edwin {
                 text_properties_changed = true;
             }
         }
-        
+
         private void on_text_underline_toggled (bool active) {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
@@ -246,7 +282,22 @@ namespace Edwin {
                 text_properties_changed = true;
             }
         }
-        
+
+        private void on_paragraph_alignment_selected (Gtk.Justification justification) {
+            Gtk.TextIter start, end;
+            if (!buffer.get_selection_bounds (out start, out end)) {
+                start = cursor;
+                end = cursor;
+            }
+            move_to_paragraph_start (ref start);
+            move_to_paragraph_end (ref end);
+            if (start.equal (end)) {
+                text_properties_changed = true;
+            } else {
+                apply_alignment_to_range (justification, start, end);
+            }
+        }
+
         private void on_mark_set (Gtk.TextIter location, Gtk.TextMark mark) {
             if (buffer.has_selection &&
                 mark == buffer.get_insert () || mark == buffer.get_selection_bound ())
@@ -254,15 +305,15 @@ namespace Edwin {
                 on_selection_range_changed ();
             }
         }
-        
+
         private void on_has_selection_changed () {
 
         }
-        
+
         private void on_selection_range_changed () {
-        
+            schedule_update_toolbar ();
         }
-        
+
         private bool on_key_press_event (Gdk.EventKey event) {
             bool ctrl = (event.state & Gdk.ModifierType.CONTROL_MASK) != 0;
             switch (event.keyval) {
@@ -313,8 +364,10 @@ namespace Edwin {
                 text_properties_changed = false;
             }
             cursor_movement_direction = 0;
-            schedule_scroll_to_cursor ();        
-            schedule_update_toolbar ();
+            schedule_scroll_to_cursor ();
+            if (!buffer.has_selection) {
+                schedule_update_toolbar ();
+            }
         }
 
         private void on_delete_range (Gtk.TextIter start, Gtk.TextIter end) {
@@ -344,15 +397,21 @@ namespace Edwin {
             Gtk.TextIter start;
             buffer.get_iter_at_mark (out start, insert_start_mark);
             bool modified;
-            var attributes = get_attributes (start, out modified);
+            var attributes = get_attributes_before (start, out modified);
             if (modified || text_properties_changed) {
-                var font_desc = text_properties_changed ? toolbar.get_text_font_desc () : attributes.font;
+                var font_desc = text_properties_changed ?
+                    toolbar.get_text_font_desc () :
+                    attributes.font;
                 var family_tag = get_font_family_tag (font_desc.get_family ());
                 var size_tag = get_text_size_tag (font_desc.get_size ());
-                var color_tag = get_text_color_tag (text_properties_changed ? toolbar.get_text_color () : get_text_color (start));
+                var color_tag = get_text_color_tag (text_properties_changed ?
+                    toolbar.get_text_color () :
+                    get_text_color (start));
                 bool has_bold_tag = font_desc.get_weight () == Pango.Weight.BOLD;
                 bool has_italic_tag = font_desc.get_style () == Pango.Style.ITALIC;
-                bool has_underline_tag = text_properties_changed ? toolbar.get_underline_state () : attributes.appearance.underline > 0;
+                bool has_underline_tag = text_properties_changed ?
+                    toolbar.get_underline_state () :
+                    attributes.appearance.underline == Pango.Underline.SINGLE;
                 apply_tag_with_id (family_tag, "font-family", start, end);
                 apply_tag_with_id (size_tag, "text-size", start, end);
                 apply_tag_with_id (color_tag, "text-color", start, end);
@@ -366,6 +425,14 @@ namespace Edwin {
                     buffer.apply_tag_by_name ("underline", start, end);
                 }
             }
+            if (!pasting_in_progress) {
+                move_to_paragraph_end (ref end);
+                var justification = text_properties_changed ?
+                    toolbar.get_paragraph_alignment () :
+                    get_paragraph_justification (start);
+                apply_alignment_to_range (justification, start, end);
+            }
+            buffer.move_mark (paste_end_mark, end);
             insertion_in_progress = false;
             text_properties_changed = false;
             schedule_scroll_to_cursor ();
@@ -375,18 +442,41 @@ namespace Edwin {
 |* PRIVATE METHODS *|
 \*******************/
 
+        private void apply_alignment_to_range (int justification, Gtk.TextIter start, Gtk.TextIter end) {
+            buffer.remove_tag (tag_aligned_left, start, end);
+            buffer.remove_tag (tag_aligned_right, start, end);
+            buffer.remove_tag (tag_centered, start, end);
+            buffer.remove_tag (tag_justified, start, end);
+            if (justification != text_view.get_default_attributes ().justification) {
+                switch (justification) {
+                case Gtk.Justification.LEFT:
+                    buffer.apply_tag (tag_aligned_left, start, end);
+                    break;
+                case Gtk.Justification.RIGHT:
+                    buffer.apply_tag (tag_aligned_right, start, end);
+                    break;
+                case Gtk.Justification.CENTER:
+                    buffer.apply_tag (tag_centered, start, end);
+                    break;
+                case Gtk.Justification.FILL:
+                    buffer.apply_tag (tag_justified, start, end);
+                    break;
+                }
+            }
+        }
+
         private void schedule_update_toolbar () {
             if (update_toolbar_handler != 0) {
                 Source.remove (update_toolbar_handler);
             }
-            update_toolbar_handler = Timeout.add (100, () => {
+            update_toolbar_handler = Timeout.add (150, () => {
                 update_toolbar ();
                 update_toolbar_handler = 0;
                 return false;
             });
         }
-        
-        private Gtk.TextAttributes get_attributes (Gtk.TextIter where, out bool modified = null) {
+
+        private Gtk.TextAttributes get_attributes_before (Gtk.TextIter where, out bool modified = null) {
             modified = false;
             var attributes = text_view.get_default_attributes ();
             var iter = where;
@@ -395,7 +485,15 @@ namespace Edwin {
             }
             return attributes;
         }
-        
+
+        private Gtk.Justification get_paragraph_justification (Gtk.TextIter where) {
+            var iter = where;
+            move_to_paragraph_start (ref iter);
+            var attributes = text_view.get_default_attributes ();
+            iter.get_attributes (attributes);
+            return attributes.justification;
+        }
+
         private Gdk.RGBA get_text_color (Gtk.TextIter where) {
             var iter = where;
             Gdk.RGBA color = default_text_color;
@@ -411,21 +509,83 @@ namespace Edwin {
         }
 
         private void update_toolbar () {
-            if (buffer.has_selection) {
-            
+            Gtk.TextIter start, end;
+            Gtk.TextAttributes attributes;
+            Pango.FontDescription font_desc;
+            Gdk.RGBA color;
+            bool has_underline;
+            int justification;
+            if (buffer.get_selection_bounds (out start, out end)) {
+                start.forward_char ();
+                attributes = get_attributes_before (start);
+                font_desc = attributes.font;
+                has_underline = attributes.appearance.underline == Pango.Underline.SINGLE;
+                color = get_text_color (start);
+                justification = get_paragraph_justification (start);
+                var iter = start;
+                move_to_tag_toggle (ref iter, true, "font-family");
+                if (iter.compare (end) < 0) {
+                    font_desc.set_family ("");
+                }
+                iter.assign (start);
+                move_to_tag_toggle (ref iter, true, "text-size");
+                if (iter.compare (end) < 0) {
+                    font_desc.set_size (0);
+                }
+                iter.assign (start);
+                move_to_tag_toggle (ref iter, true, "text-color");
+                if (iter.compare (end) < 0) {
+                    color.alpha = 0;
+                }
+                start.backward_char ();
+                iter.assign (start);
+                if (font_desc.get_weight () == Pango.Weight.BOLD &&
+                    iter.forward_to_tag_toggle (tag_bold) &&
+                    iter.compare (end) < 0)
+                {
+                    font_desc.set_weight (Pango.Weight.NORMAL);
+                }
+                iter.assign (start);
+                if (font_desc.get_style () == Pango.Style.ITALIC &&
+                    iter.forward_to_tag_toggle (tag_italic) &&
+                    iter.compare (end) < 0)
+                {
+                    font_desc.set_style (Pango.Style.ITALIC);
+                }
+                iter.assign (start);
+                if (has_underline &&
+                    iter.forward_to_tag_toggle (tag_underline) &&
+                    iter.compare (end) < 0)
+                {
+                    has_underline = false;
+                }
+                iter.assign (start);
+                while (forward_paragraph (ref iter) && iter.compare (end) < 0) {
+                    if (get_paragraph_justification (iter) != justification) {
+                        justification = -1;
+                        break;
+                    }
+                }
             } else {
-                var attributes = get_attributes (cursor);
-                toolbar.set_text_font_desc (attributes.font);
-                toolbar.set_underline_state (attributes.appearance.underline > 0);
-                toolbar.set_text_color (get_text_color (cursor));
+                attributes = get_attributes_before (cursor);
+                font_desc = attributes.font;
+                has_underline = attributes.appearance.underline == Pango.Underline.SINGLE;
+                color = get_text_color (cursor);
+                justification = get_paragraph_justification (cursor);
             }
+            toolbar.set_text_font_desc (font_desc);
+            toolbar.set_underline_state (has_underline);
+            toolbar.set_text_color (color);
+            toolbar.set_paragraph_alignment (justification);
         }
-        
+
         private void set_defaults () {
-            toolbar.set_text_font_desc (text_view.get_default_attributes ().font);
+            var attributes = text_view.get_default_attributes ();
+            toolbar.set_text_font_desc (attributes.font);
             toolbar.set_text_color (default_text_color);
+            toolbar.set_paragraph_alignment (attributes.justification);
         }
-        
+
         private unowned Gtk.TextTag get_font_family_tag (string family) {
             unowned Gtk.TextTag? tag = font_family_tags.lookup (family);
             if (tag == null) {
@@ -463,24 +623,40 @@ namespace Edwin {
                 }
             });
         }
-        
-        private bool move_to_tag_toggle (ref Gtk.TextIter iter, bool forward, string id, bool toggled_on) {
+
+        private bool move_to_tag_toggle (ref Gtk.TextIter iter, bool forward, string id, int dir = 0) {
             do {
-                foreach (var toggled_tag in iter.get_toggled_tags (toggled_on)) {
-                    if (toggled_tag.name != null && toggled_tag.name.has_prefix (id)) {
+                SList<weak Gtk.TextTag> tags, tmp_tags;
+                switch (dir) {
+                case -1:
+                    tags = iter.get_toggled_tags (true);
+                    break;
+                case 1:
+                    tags = iter.get_toggled_tags (false);
+                    break;
+                case 0:
+                    tags = iter.get_toggled_tags (true);
+                    tmp_tags = iter.get_toggled_tags (false);
+                    tags.concat ((owned) tmp_tags);
+                    break;
+                default:
+                    assert_not_reached ();
+                }
+                foreach (var tag in tags) {
+                    if (tag.name != null && tag.name.has_prefix (id)) {
                         return true;
                     }
                 }
             } while (forward ? iter.forward_to_tag_toggle (null) : iter.backward_to_tag_toggle (null));
             return false;
         }
-        
+
         private void apply_tag_with_id (Gtk.TextTag tag, string id, Gtk.TextIter start, Gtk.TextIter end) {
             var range_start = start;
             var range_end = Gtk.TextIter ();
             while (range_start.compare (end) < 0) {
                 range_end.assign (range_start);
-                move_to_tag_toggle (ref range_end, true, id, true);
+                move_to_tag_toggle (ref range_end, true, id, -1);
                 if (range_end.compare (end) > 0) {
                     range_end.assign (end);
                 }
@@ -492,17 +668,17 @@ namespace Edwin {
                 }
                 range_start.assign (range_end);
                 range_start.forward_char ();
-                move_to_tag_toggle (ref range_start, true, id, false);
+                move_to_tag_toggle (ref range_start, true, id, 1);
             }
         }
-        
+
         private void schedule_scroll_to_cursor () {
-            Timeout.add (100, () => {
+            Timeout.add (150, () => {
                 scroll_to_mark (buffer.get_insert ());
                 return false;
             });
         }
-        
+
         private void scroll_to_mark (Gtk.TextMark mark) {
             Gtk.TextIter iter;
             Gdk.Rectangle rect;
@@ -595,7 +771,7 @@ namespace Edwin {
             dx = viewport_rect.x > un.x ? un.x - viewport_rect.x : un.width - viewport_rect.width;
             dy = viewport_rect.y > un.y ? un.y - viewport_rect.y : un.height - viewport_rect.height;
         }
-        
+
         private uint create_section_break (Gtk.TextIter iter, int vskip) {
             uint n;
             Gtk.TextIter break_iter;
@@ -656,7 +832,7 @@ namespace Edwin {
             buffer.place_cursor (iter);
             iter.backward_char ();
         }
-        
+
         public int move_to_section_start (ref Gtk.TextIter iter) {
             Gtk.TextIter start;
             uint n = 0;
@@ -688,7 +864,7 @@ namespace Edwin {
             }
             buffer.get_end_iter (out iter);
         }
-        
+
         public void get_section_bounds (Gtk.TextIter where, out Gtk.TextIter start, out Gtk.TextIter end) {
             start = Gtk.TextIter ();
             start.assign (where);
@@ -715,23 +891,13 @@ namespace Edwin {
             return true;
         }
 
+        public void move_to_paragraph_start (ref Gtk.TextIter iter) {
+            iter.set_line_offset (0);
+        }
+
         public void move_to_paragraph_end (ref Gtk.TextIter iter) {
             if (iter.forward_line ()) {
                 iter.backward_char ();
-            }
-        }
-
-        public void iterate_over_lines (ref Gtk.TextIter start, TextRangeFunc line_func) {
-            var end = start;
-            while (end.forward_char ()) {
-                if (text_view.starts_display_line (end)) {
-                    end.backward_char ();
-                    if (!line_func (start, end)) {
-                        break;
-                    }
-                    end.forward_char ();
-                    start.assign (end);
-                }
             }
         }
 
@@ -744,10 +910,14 @@ namespace Edwin {
             start.assign (end);
         }
 
-        public int get_y_at_iter (Gtk.TextIter iter, bool win_coords = true) {
-            Gdk.Rectangle rect;
-            get_location (iter, out rect, win_coords);
-            return rect.y;
+        public bool range_intersects_selection (Gtk.TextIter start, Gtk.TextIter end) {
+            var sel_start = Gtk.TextIter ();
+            var sel_end = Gtk.TextIter ();
+            if (!start.equal (end) && buffer.get_selection_bounds (out sel_start, out sel_end)) {
+                assert (start.compare (end) < 0);
+                return start.compare (sel_end) < 0 && end.compare (sel_start) > 0;
+            }
+            return false;
         }
 
         public void draw_section_breaks (Cairo.Context cr) {
@@ -773,9 +943,9 @@ namespace Edwin {
                 Utils.fill_rectangle_as_background (cr, rect);
             }
         }
-        
+
         public void draw_page_breaks (Cairo.Context cr) {
-            Gtk.TextIter start, end, iter;            
+            Gtk.TextIter start, end, iter;
             Gdk.Rectangle rect, rect_end, section_rect, tmp_rect;
             var viewport_rect = get_viewport_rectangle ();
             var win = Gtk.TextWindowType.WIDGET;
@@ -844,7 +1014,7 @@ namespace Edwin {
                 }
             }
         }
-        
+
     }
 
 }
