@@ -154,6 +154,7 @@ namespace Edwin {
 \*************/
 
         private void on_realize () {
+            set_defaults ();
 			var win = this.get_view_window ();
 			var events = win.get_events ();
 			win.set_events (events & ~Gdk.EventMask.FOCUS_CHANGE_MASK);
@@ -169,32 +170,19 @@ namespace Edwin {
             buffer.insert_text.connect (on_insert_text);
             buffer.mark_set.connect (on_mark_set);
             buffer.insert_text.connect_after (on_insert_text_after);
-            toolbar.text_font_selected.connect (on_text_font_selected);
+            toolbar.font_family_selected.connect (on_font_family_selected);
             toolbar.text_size_selected.connect (on_text_size_selected);
             toolbar.text_color_selected.connect (on_text_color_selected);
             toolbar.text_bold_toggled.connect (on_text_bold_toggled);
             toolbar.text_italic_toggled.connect (on_text_italic_toggled);
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
-            set_defaults ();
         }
         
-        private void on_text_font_selected (Pango.FontDescription font_desc) {
+        private void on_font_family_selected (string family) {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
                 remove_tags ("font-family", start, end);
-                buffer.apply_tag (get_font_family_tag (font_desc.get_family ()), start, end);
-                remove_tags ("text-size", start, end);
-                buffer.apply_tag (get_text_size_tag (font_desc.get_size ()), start, end);
-                if (font_desc.get_weight () == Pango.Weight.BOLD) {
-                    buffer.apply_tag_by_name ("bold", start, end);
-                } else {
-                    buffer.remove_tag_by_name ("bold", start, end);
-                }
-                if (font_desc.get_style () == Pango.Style.ITALIC) {
-                    buffer.apply_tag_by_name ("italic", start, end);
-                } else {
-                    buffer.remove_tag_by_name ("italic", start, end);
-                }
+                buffer.apply_tag (get_font_family_tag (family), start, end);
             } else {
                 text_properties_changed = true;
             }

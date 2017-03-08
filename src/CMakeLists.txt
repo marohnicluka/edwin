@@ -18,6 +18,7 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	document.vala
 	textview.vala
 	papersize.vala
+	fontfamilychooser.vala
 	settings.vala
 	utils.vala
 PACKAGES

@@ -5,7 +5,7 @@ EdwinToolBar {
     box-shadow: 0 1px #f7f7f7;
 }
 EdwinToolBarStyleChooser > .button {
-    padding: 0 4px 0 6px;
+    padding: 0 4px 0 4px;
     box-shadow: inset 1px 1px white, 1px 1px white;
 }
 EdwinToolBarSizeChooser > .button {
@@ -17,7 +17,7 @@ EdwinToolBarSizeChooser > .button {
     box-shadow: 1px 1px white;
 }
 EdwinToolBarSizeChooser > .entry {
-    padding: 0 1px 0 8px;
+    padding: 0 1px 0 6px;
     border-width: 1px 0 1px 1px;
     border-color: #c5c5c5;
     border-left-color: #bababa;
@@ -36,12 +36,15 @@ EdwinToolBarModeButton > .button {
     padding-right: 7px;
     box-shadow: inset 1px 1px white, 1px 1px white;
 }
-EdwinToolBarFontChooser {
+EdwinToolBarFontButton {
     border-width: 1px 0 1px 1px;
     box-shadow: inset 1px 1px white, 0 1px white;
 }
+EdwinToolBarFontButton > .label {
+    padding-left: 3px;
+}
 EdwinToolBarButton,
-EdwinToolBarFontChooser,
+EdwinToolBarFontButton,
 EdwinToolBarColorChooser,
 EdwinToolBarModeButton > .button,
 EdwinToolBarStyleChooser > .button {

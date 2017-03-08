@@ -29,7 +29,6 @@ namespace Edwin {
     public class ToolBar : Gtk.Toolbar {
     
         const int CHOOSER_WIDTH = 130;
-        const string DEFAULT_FONT = "Sans";
         const int DEFAULT_FONT_SIZE = 12;
         const int[] FONT_SIZES = { 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 21, 24, 36, 48, 60, 72 };
         
@@ -72,23 +71,25 @@ namespace Edwin {
             }
         }
         
-        public class FontChooser : Gtk.FontButton {
-            public FontChooser () {
+        public class FontButton : Gtk.Button {
+        
+            public FontFamilyChooser chooser;
+            
+            public FontButton () {
                 can_focus = false;
-                font_name = DEFAULT_FONT;
-                show_size = false;
-                show_style = false;
-                use_size = true;
-                title = _("Choose Text Font");
-                var box = (Gtk.Box) get_child ();
-                var label = (Gtk.Label) box.get_children ().nth_data (0);
-                label.xalign = 0.0f;
-                Utils.apply_stylesheet (label, "* {\npadding-left: 0;\n}");
-                string[] allowed_face_names = {"regular", "bold", "italic", "bold italic", ""};
-                set_filter_func ((family, face) => {
-                    var face_name = face.get_face_name ().down ();
-                    return face_name in allowed_face_names;
+                xalign = 0.0f;
+                chooser = new FontFamilyChooser (this);
+                this.clicked.connect (() => {
+                    chooser.show ();
                 });
+            }
+            
+            public void set_font_family (string family) {
+                this.label = family;
+            }
+            
+            public string get_font_family () {
+                return this.label;
             }
         }
         
@@ -182,7 +183,7 @@ namespace Edwin {
         unowned MainWindow main_window;
         
         StyleChooser style_chooser;
-        FontChooser font_button;
+        FontButton font_button;
         ColorChooser color_button;
         SizeChooser size_chooser;
         Button button_bold;
@@ -191,14 +192,11 @@ namespace Edwin {
         AlignmentButton alignment_button;
         ListButton list_button;
         
-        bool has_selection = false;
-        Gtk.TextIter selection_start;
-        Gtk.TextIter selection_end;        
         bool programmatic = false;
         
         public signal void paragraph_style_selected (string id);
         public signal void paragraph_alignment_selected (Gtk.Justification alignment_type);
-        public signal void text_font_selected (Pango.FontDescription font_desc);
+        public signal void font_family_selected (string family);
         public signal void text_color_selected (Gdk.RGBA color);
         public signal void text_size_selected (int size);
         public signal void text_bold_toggled (bool active);
@@ -206,7 +204,6 @@ namespace Edwin {
         public signal void text_underline_toggled (bool active);
         public signal void list_type_selected (TextListType type);
         public signal void return_focus_to_document ();
-        public signal void text_font_changed ();
         
         public unowned Gtk.TextBuffer buffer {
             get { return main_window.document.buffer; }
@@ -215,7 +212,6 @@ namespace Edwin {
         public ToolBar (MainWindow main_window) {
             this.main_window = main_window;
             create_layout ();
-            update_font_name ();
             connect_signals ();
         }
         
@@ -224,12 +220,11 @@ namespace Edwin {
             style_chooser.set_size_request (CHOOSER_WIDTH, -1);
             add_widget (style_chooser);
             color_button = new ColorChooser ();
-            font_button = new FontChooser ();
+            font_button = new FontButton ();
             var font_box = new ToolBox (false);
             font_box.pack_start (font_button);
             font_box.pack_start (color_button, false);
             font_box.set_size_request (CHOOSER_WIDTH, -1);
-            set_font_button_tooltip ();
             add_separator ();
             add_widget (font_box);
             size_chooser = new SizeChooser ();
@@ -261,22 +256,14 @@ namespace Edwin {
                 debug ("User changed paragraph style to %s", id);
                 paragraph_style_selected (id);
             });
-            font_button.clicked.connect (() => {
-                has_selection = buffer.get_selection_bounds (out selection_start, out selection_end);
-            });
-            font_button.font_set.connect (() => {
-                if (has_selection) {
-                    buffer.select_range (selection_start, selection_end);
-                    has_selection = false;
+            font_button.chooser.activated.connect (() => {
+                var family = font_button.chooser.get_selected_family ();
+                if (family != null) {
+                    debug ("User changed text font to %s", family);
+                    font_button.set_font_family (family);
+                    font_family_selected (family);
+                    font_button.chooser.hide ();
                 }
-                update_font_properties ();
-                var name = font_button.get_font_name ();
-                debug ("User changed text font to %s", name);
-                text_font_selected (font_button.font_desc);
-            });
-            font_button.notify["font-name"].connect (() => {
-                set_font_button_tooltip ();
-                text_font_changed ();
             });
             color_button.color_set.connect (() => {
                 var color = color_button.rgba;
@@ -290,6 +277,7 @@ namespace Edwin {
                 if (!size_chooser.entry.has_focus) {
                     on_user_changed_font_size ();
                 }
+                return_focus_to_document ();
             });
             size_chooser.entry.activate.connect (() => {
                 on_user_changed_font_size ();
@@ -299,7 +287,6 @@ namespace Edwin {
                 if (programmatic) {
                     return;
                 }
-                update_font_name ();
                 var active = button_bold.active;
                 debug ("User toggled bold %s", active ? "on" : "off");
                 text_bold_toggled (active);
@@ -308,7 +295,6 @@ namespace Edwin {
                 if (programmatic) {
                     return;
                 }
-                update_font_name ();
                 var active = button_italic.active;
                 debug ("User toggled italic %s", active ? "on" : "off");
                 text_italic_toggled (active);
@@ -365,7 +351,6 @@ namespace Edwin {
         }
         
         private void on_user_changed_font_size () {
-            update_font_name ();
             var size = int.parse (size_chooser.entry.text);
             if (size <= 0) {
                 size = DEFAULT_FONT_SIZE;
@@ -374,33 +359,6 @@ namespace Edwin {
             }
             debug ("User changed text size to %d", size);
             text_size_selected (size);
-        }
-        
-        private void update_font_properties () {
-            var font_desc = Pango.FontDescription.from_string (font_button.font_name);
-            begin_programmatic ();
-            var size = font_desc.get_size ();
-            if (size > 100) {
-                size /= Pango.SCALE;
-            }
-            size_chooser.entry.text = size.to_string ();
-            button_bold.active = font_desc.get_weight () == Pango.Weight.BOLD;
-            button_italic.active = font_desc.get_style () == Pango.Style.ITALIC;
-        }
-        
-        private void update_font_name () {
-            var font_desc = Pango.FontDescription.from_string (font_button.font_name);
-            string size_text = size_chooser.entry.text;
-            int size = size_text.length == 0 ? DEFAULT_FONT_SIZE : int.parse (size_text);
-            font_desc.set_size (size * Pango.SCALE);
-            font_desc.set_weight (button_bold.active ? Pango.Weight.BOLD : Pango.Weight.NORMAL);
-            font_desc.set_style (button_italic.active ? Pango.Style.ITALIC : Pango.Style.NORMAL);
-            string name = font_desc.to_string ();
-            font_button.set_font_name (name);
-        }
-        
-        private void set_font_button_tooltip () {
-            font_button.set_tooltip_text (get_text_font_desc ().to_string ());
         }
         
 /******************\
@@ -436,12 +394,26 @@ namespace Edwin {
         
         public void set_text_font_desc (Pango.FontDescription font_desc) {
             assert (font_desc.get_size_is_absolute () == false);
-            font_button.set_font_name (font_desc.to_string ());
-            update_font_properties ();
+            var family = font_desc.get_family ();
+            font_button.set_font_family (family);
+            begin_programmatic ();
+            var size = font_desc.get_size ();
+            if (size > 100) {
+                size /= Pango.SCALE;
+            }
+            size_chooser.entry.text = size.to_string ();
+            button_bold.active = font_desc.get_weight () == Pango.Weight.BOLD;
+            button_italic.active = font_desc.get_style () == Pango.Style.ITALIC;
         }
         
         public Pango.FontDescription get_text_font_desc () {
-            return Pango.FontDescription.from_string (font_button.font_name);
+            var font_desc = Pango.FontDescription.from_string (font_button.get_font_family ());
+            string size_text = size_chooser.entry.text;
+            int size = size_text.length == 0 ? DEFAULT_FONT_SIZE : int.parse (size_text);
+            font_desc.set_size (size * Pango.SCALE);
+            font_desc.set_weight (button_bold.active ? Pango.Weight.BOLD : Pango.Weight.NORMAL);
+            font_desc.set_style (button_italic.active ? Pango.Style.ITALIC : Pango.Style.NORMAL);
+            return font_desc;
         }
         
         public void set_text_color (Gdk.RGBA color) {
@@ -457,8 +429,12 @@ namespace Edwin {
             size_chooser.entry.text = size > 0 ? size.to_string () : "";
         }
         
-        public void set_font_name (string name) {
-            font_button.set_font_name (name);
+        public void set_font_family (string family) {
+            font_button.set_font_family (family);
+        }
+        
+        public string get_font_family () {
+            return font_button.get_font_family ();
         }
         
         public void set_underline_state (bool state) {
