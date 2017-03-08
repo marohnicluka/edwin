@@ -47,6 +47,8 @@ namespace Edwin {
         unowned MainWindow main_window;
         unowned Gtk.TextMark insert_start_mark;
         int cursor_movement_direction = 0;
+        bool text_properties_changed = false;
+        bool insertion_in_progress = false;
         uint scroll_handler = 0;
         uint update_toolbar_handler = 0;
         uint section_break_serial = 0;
@@ -83,6 +85,9 @@ namespace Edwin {
         }
         public int section_skip_after {
             get { return (3 * paper_size.top_margin) / 2; }
+        }
+        public Gdk.RGBA default_text_color {
+            get { return text_view.get_style_context ().get_color (0); }
         }
         
         /* signals */
@@ -190,6 +195,8 @@ namespace Edwin {
                 } else {
                     buffer.remove_tag_by_name ("italic", start, end);
                 }
+            } else {
+                text_properties_changed = true;
             }
         }
         
@@ -198,6 +205,8 @@ namespace Edwin {
             if (buffer.get_selection_bounds (out start, out end)) {
                 remove_tags ("text-size", start, end);
                 buffer.apply_tag (get_text_size_tag (size * Pango.SCALE), start, end);
+            } else {
+                text_properties_changed = true;
             }
         }
         
@@ -206,6 +215,8 @@ namespace Edwin {
             if (buffer.get_selection_bounds (out start, out end)) {
                 remove_tags ("text-color", start, end);
                 buffer.apply_tag (get_text_color_tag (color), start, end);
+            } else {
+                text_properties_changed = true;
             }
         }
 
@@ -217,6 +228,8 @@ namespace Edwin {
                 } else {
                     buffer.remove_tag_by_name ("bold", start, end);
                 }
+            } else {
+                text_properties_changed = true;
             }
         }
         
@@ -228,6 +241,8 @@ namespace Edwin {
                 } else {
                     buffer.remove_tag_by_name ("italic", start, end);
                 }
+            } else {
+                text_properties_changed = true;
             }
         }
         
@@ -239,6 +254,8 @@ namespace Edwin {
                 } else {
                     buffer.remove_tag_by_name ("underline", start, end);
                 }
+            } else {
+                text_properties_changed = true;
             }
         }
         
@@ -304,6 +321,9 @@ namespace Edwin {
                     buffer.place_cursor (iter);
                 }
             }
+            if (!insertion_in_progress) {
+                text_properties_changed = false;
+            }
             cursor_movement_direction = 0;
             schedule_scroll_to_cursor ();        
             schedule_update_toolbar ();
@@ -329,11 +349,37 @@ namespace Edwin {
 
         private void on_insert_text (ref Gtk.TextIter iter, string text, int len) {
             buffer.move_mark (insert_start_mark, iter);
+            insertion_in_progress = true;
         }
 
-        private void on_insert_text_after (ref Gtk.TextIter iter, string text, int len) {
+        private void on_insert_text_after (ref Gtk.TextIter end, string text, int len) {
             Gtk.TextIter start;
             buffer.get_iter_at_mark (out start, insert_start_mark);
+            bool modified;
+            var attributes = get_attributes (start, out modified);
+            if (modified || text_properties_changed) {
+                var font_desc = text_properties_changed ? toolbar.get_text_font_desc () : attributes.font;
+                var family_tag = get_font_family_tag (font_desc.get_family ());
+                var size_tag = get_text_size_tag (font_desc.get_size ());
+                var color_tag = get_text_color_tag (text_properties_changed ? toolbar.get_text_color () : get_text_color (start));
+                bool has_bold_tag = font_desc.get_weight () == Pango.Weight.BOLD;
+                bool has_italic_tag = font_desc.get_style () == Pango.Style.ITALIC;
+                bool has_underline_tag = text_properties_changed ? toolbar.get_underline_state () : attributes.appearance.underline > 0;
+                apply_tag_with_id (family_tag, "font-family", start, end);
+                apply_tag_with_id (size_tag, "text-size", start, end);
+                apply_tag_with_id (color_tag, "text-color", start, end);
+                if (has_bold_tag) {
+                    buffer.apply_tag_by_name ("bold", start, end);
+                }
+                if (has_italic_tag) {
+                    buffer.apply_tag_by_name ("italic", start, end);
+                }
+                if (has_underline_tag) {
+                    buffer.apply_tag_by_name ("underline", start, end);
+                }
+            }
+            insertion_in_progress = false;
+            text_properties_changed = false;
             schedule_scroll_to_cursor ();
         }
 
@@ -352,18 +398,19 @@ namespace Edwin {
             });
         }
         
-        private Gtk.TextAttributes get_attributes (Gtk.TextIter where) {
+        private Gtk.TextAttributes get_attributes (Gtk.TextIter where, out bool modified = null) {
+            modified = false;
             var attributes = text_view.get_default_attributes ();
             var iter = where;
             if (iter.backward_char ()) {
-                iter.get_attributes (attributes);
+                modified = iter.get_attributes (attributes);
             }
             return attributes;
         }
         
         private Gdk.RGBA get_text_color (Gtk.TextIter where) {
             var iter = where;
-            Gdk.RGBA color = {0.0, 0.0, 0.0, 1.0};
+            Gdk.RGBA color = default_text_color;
             if (!iter.backward_char ()) {
                 return color;
             }
@@ -381,13 +428,14 @@ namespace Edwin {
             } else {
                 var attributes = get_attributes (cursor);
                 toolbar.set_text_font_desc (attributes.font);
-                toolbar.set_underline_state (attributes.appearance.underline != 0);
+                toolbar.set_underline_state (attributes.appearance.underline > 0);
                 toolbar.set_text_color (get_text_color (cursor));
             }
         }
         
         private void set_defaults () {
             toolbar.set_text_font_desc (text_view.get_default_attributes ().font);
+            toolbar.set_text_color (default_text_color);
         }
         
         private unowned Gtk.TextTag get_font_family_tag (string family) {
@@ -420,12 +468,44 @@ namespace Edwin {
             return tag;
         }
 
-        private void remove_tags (string group_id, Gtk.TextIter start, Gtk.TextIter end) {
+        private void remove_tags (string id, Gtk.TextIter start, Gtk.TextIter end) {
             buffer.tag_table.@foreach ((tag) => {
-                if (tag.name != null && tag.name.has_prefix (group_id)) {
+                if (tag.name != null && tag.name.has_prefix (id)) {
                     buffer.remove_tag (tag, start, end);
                 }
             });
+        }
+        
+        private bool move_to_tag_toggle (ref Gtk.TextIter iter, bool forward, string id, bool toggled_on) {
+            do {
+                foreach (var toggled_tag in iter.get_toggled_tags (toggled_on)) {
+                    if (toggled_tag.name != null && toggled_tag.name.has_prefix (id)) {
+                        return true;
+                    }
+                }
+            } while (forward ? iter.forward_to_tag_toggle (null) : iter.backward_to_tag_toggle (null));
+            return false;
+        }
+        
+        private void apply_tag_with_id (Gtk.TextTag tag, string id, Gtk.TextIter start, Gtk.TextIter end) {
+            var range_start = start;
+            var range_end = Gtk.TextIter ();
+            while (range_start.compare (end) < 0) {
+                range_end.assign (range_start);
+                move_to_tag_toggle (ref range_end, true, id, true);
+                if (range_end.compare (end) > 0) {
+                    range_end.assign (end);
+                }
+                if (!range_start.equal (range_end)) {
+                    buffer.apply_tag (tag, range_start, range_end);
+                }
+                if (range_end.equal (end)) {
+                    break;
+                }
+                range_start.assign (range_end);
+                range_start.forward_char ();
+                move_to_tag_toggle (ref range_start, true, id, false);
+            }
         }
         
         private void schedule_scroll_to_cursor () {
@@ -559,6 +639,18 @@ namespace Edwin {
             buffer.tag_table.@foreach ((tag) => {
                 buffer.get_start_iter (out iter);
                 if (!iter.has_tag (tag) && !iter.forward_to_tag_toggle (tag)) {
+                    if (tag.name == null) {
+                        return;
+                    }
+                    if (tag.name.has_prefix ("font-family")) {
+                        assert (font_family_tags.remove (tag.name.substring (12)));
+                    } else if (tag.name.has_prefix ("text-size")) {
+                        assert (text_size_tags.remove (int.parse (tag.name.substring (10)) * Pango.SCALE));
+                    } else if (tag.name.has_prefix ("text-color")) {
+                        var color = Gdk.RGBA ();
+                        color.parse (tag.name.substring (11));
+                        assert (text_color_tags.remove (color));
+                    } else return;
                     buffer.tag_table.remove (tag);
                 }
             });
