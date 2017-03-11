@@ -148,8 +148,18 @@ namespace Edwin {
         }
         
         private void connect_signals () {
+            this.realize.connect (() => {
+                button_undo.sensitive = false;
+                button_redo.sensitive = false;
+            });
             toolbar.return_focus_to_document.connect (() => {
                 document.focus ();
+            });
+            document.notify["can-undo"].connect (() => {
+                button_undo.sensitive = document.can_undo;
+            });
+            document.notify["can-redo"].connect (() => {
+                button_redo.sensitive = document.can_redo;
             });
         }
         
@@ -217,6 +227,7 @@ namespace Edwin {
         
         private void change_state_check_spelling (SimpleAction action) {
             debug ("Change spellcheck state");
+            document.check_spelling = button_spelling.active;
         }
         
         private void change_state_text_bold (SimpleAction action) {

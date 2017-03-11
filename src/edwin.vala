@@ -109,6 +109,8 @@ namespace Edwin {
         private void set_accelerators () {
             set_accels_for_action ("win.Quit", {"<Primary>q"});
             set_accels_for_action ("win.NewDocument", {"<Primary>n"});
+            set_accels_for_action ("win.Undo", {"<Primary>z"});
+            set_accels_for_action ("win.Redo", {"<Primary><Shift>z"});
         }
                 
         private void create_unsaved_documents_directory () {

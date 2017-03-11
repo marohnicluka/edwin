@@ -22,10 +22,15 @@ namespace Edwin {
 
     public class TextView : Gtk.TextView {
 
+        const double OUTER_MARGIN = 0.5; // inches
+
         unowned Document doc;
 
         public TextView (Document doc) {
             this.doc = doc;
+            margin = Utils.to_pixels (Utils.INCH, OUTER_MARGIN);
+            wrap_mode = Gtk.WrapMode.WORD_CHAR;
+            halign = Gtk.Align.CENTER;
         }
 
         public override void draw_layer (Gtk.TextViewLayer layer, Cairo.Context cr) {
@@ -41,6 +46,14 @@ namespace Edwin {
                 break;
             }
             cr.restore ();
+        }
+        
+        public void shape (PaperSize paper_size) {
+            left_margin = paper_size.left_margin;
+            right_margin = paper_size.right_margin;
+            top_margin = paper_size.top_margin;
+            bottom_margin = paper_size.bottom_margin;
+            width_request = paper_size.width;
         }
 
     }
