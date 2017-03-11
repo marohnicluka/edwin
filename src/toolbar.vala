@@ -154,7 +154,6 @@ namespace Edwin {
                 assert (Gtk.Justification.RIGHT == append (Utils.get_icon ("text-tools::aligned-right")));
                 assert (Gtk.Justification.CENTER == append (Utils.get_icon ("text-tools::centered")));
                 assert (Gtk.Justification.FILL == append (Utils.get_icon ("text-tools::justified")));
-                set_active (Gtk.Justification.LEFT);
             }
         }
         

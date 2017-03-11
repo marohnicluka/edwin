@@ -22,6 +22,8 @@ namespace Edwin {
 
     public class FontFamilyChooser : Gtk.Popover {
     
+        const int NUMBER_OF_VISIBLE_ENTRIES = 7;
+    
         Gtk.ListStore font_store;
         Gtk.TreeView font_view;
         Gtk.SearchEntry search_entry;
@@ -55,7 +57,7 @@ namespace Edwin {
                 var path = new Gtk.TreePath.from_indices (0);
                 Gdk.Rectangle rect;
                 font_view.get_background_area (path, null, out rect);
-                scrolled_window.height_request = 7 * rect.height;
+                scrolled_window.height_request = NUMBER_OF_VISIBLE_ENTRIES * rect.height;
                 var family = (relative_to as Gtk.Button).label;
                 select_family (family);
             });

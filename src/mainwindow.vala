@@ -179,10 +179,12 @@ namespace Edwin {
         
         private void action_undo () {
             debug ("Undo");
+            document.undo ();
         }
         
         private void action_redo () {
             debug ("Redo");
+            document.redo ();
         }
         
         private void action_export () {

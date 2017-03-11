@@ -29,9 +29,38 @@ namespace Edwin {
 
     public class Document : Gtk.Viewport {
 
+/*********************\
+|* STRUCTS AND ENUMS *|
+\*********************/
+
         public struct SectionBreak {
             public unowned Gtk.TextMark mark;
             public unowned Gtk.TextTag tag;
+        }
+        
+        public enum UndoOperationType {
+            INSERT,
+            DELETE,
+            TAG
+        }
+        
+        public struct UndoOperation {
+            public UndoOperationType type;
+            public int[] offsets;
+            public unowned Gtk.TextTag tag;
+            public bool tag_applied;
+            public bool pop_next;
+            
+            public void set_offsets (Gtk.TextIter iter1, Gtk.TextIter iter2) {
+                offsets = new int[2];
+                offsets[0] = iter1.get_offset ();
+                offsets[1] = iter2.get_offset ();
+            }
+            
+            public void get_iter_at_offset (out Gtk.TextIter iter, int index, Gtk.TextBuffer buffer) {
+                buffer.get_start_iter (out iter);
+                iter.set_offset (offsets[index]);
+            }
         }
 
 /*************************\
@@ -40,23 +69,32 @@ namespace Edwin {
 
         /* public properties */
         public PaperSize paper_size { get; set; }
+        public bool can_undo { get; private set; default = false; }
+        public bool can_redo { get; private set; default = false; }
 
         /* private fields */
         TextView text_view;
+        Gtk.TextBuffer undo_buffer;
+        Gtk.TextBuffer redo_buffer;
         Gtk.EventBox text_view_box;
         GtkSpell.Checker spell_checker;
         unowned MainWindow main_window;
         unowned Gtk.TextMark insert_start_mark;
-        unowned Gtk.TextMark paste_start_mark;
-        unowned Gtk.TextMark paste_end_mark;
         int cursor_movement_direction = 0;
+        int justification_before_insert = 0;
         bool text_properties_changed = false;
         bool insertion_in_progress = false;
         bool pasting_in_progress = false;
+        bool undoable_action_in_progress = false;
+        bool redoable_action_in_progress = false;
         uint scroll_handler = 0;
+        uint end_undoable_action_handler = 0;
         uint update_toolbar_handler = 0;
         uint section_break_serial = 0;
-        List<SectionBreak?> section_breaks = null;
+        uint undo_operation_counter = 0;
+        List<SectionBreak?> section_breaks = new List<SectionBreak?> ();
+        Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
+        Queue<UndoOperation?> redo_stack = new Queue<UndoOperation?> ();
         /* tags */
         unowned Gtk.TextTag tag_bold;
         unowned Gtk.TextTag tag_italic;
@@ -167,8 +205,11 @@ namespace Edwin {
             Gtk.TextIter where;
             buffer.get_start_iter (out where);
             insert_start_mark = buffer.create_mark (null, where, true);
-            paste_start_mark = buffer.create_mark (null, where, true);
-            paste_end_mark = buffer.create_mark (null, where, false);
+            /* buffers that record text deletions
+            /* used for undo/redo operations
+             */
+            undo_buffer = new Gtk.TextBuffer (buffer.tag_table);
+            redo_buffer = new Gtk.TextBuffer (buffer.tag_table);
         }
 
 /*************\
@@ -183,6 +224,8 @@ namespace Edwin {
             text_view.move_cursor.connect (on_move_cursor);
             text_view.key_press_event.connect (on_key_press_event);
             text_view.paste_clipboard.connect (on_paste_clipboard);
+            text_view.drag_begin.connect (on_drag_begin);
+            text_view.drag_end.connect (on_drag_end);
             buffer.notify["cursor-position"].connect (on_cursor_position_changed);
             buffer.notify["has-selection"].connect (on_has_selection_changed);
             buffer.delete_range.connect (on_delete_range);
@@ -191,6 +234,8 @@ namespace Edwin {
             buffer.mark_set.connect (on_mark_set);
             buffer.insert_text.connect_after (on_insert_text_after);
             buffer.paste_done.connect (on_paste_done);
+            buffer.apply_tag.connect (on_apply_tag);
+            buffer.remove_tag.connect (on_remove_tag);
             toolbar.font_family_selected.connect (on_font_family_selected);
             toolbar.text_size_selected.connect (on_text_size_selected);
             toolbar.text_color_selected.connect (on_text_color_selected);
@@ -199,19 +244,33 @@ namespace Edwin {
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
             toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
         }
+        
+        private void on_drag_begin (Gdk.DragContext context) {
+            debug ("Drag started");
+            begin_undoable_action ();
+        }
+        
+        private void on_drag_end (Gdk.DragContext context) {
+            debug ("Drag ended");
+            end_undoable_action ();
+        }
 
         private void on_paste_clipboard () {
-            buffer.move_mark (paste_start_mark, cursor);
             pasting_in_progress = true;
+            begin_undoable_action ();
         }
 
         private void on_paste_done (Gtk.Clipboard clipboard) {
-            Gtk.TextIter start, end;
-            buffer.get_iter_at_mark (out start, paste_start_mark);
-            buffer.get_iter_at_mark (out end, paste_end_mark);
-            move_to_paragraph_end (ref end);
-            apply_alignment_to_range (get_paragraph_justification (start), start, end);
             pasting_in_progress = false;
+            end_undoable_action ();
+        }
+        
+        private void on_apply_tag (Gtk.TextTag tag, Gtk.TextIter start, Gtk.TextIter end) {
+            push_undo_operation_tag (start, end, tag, true);
+        }
+
+        private void on_remove_tag (Gtk.TextTag tag, Gtk.TextIter start, Gtk.TextIter end) {
+            push_undo_operation_tag (start, end, tag, false);
         }
 
         private void on_font_family_selected (string family) {
@@ -294,7 +353,9 @@ namespace Edwin {
             if (start.equal (end)) {
                 text_properties_changed = true;
             } else {
+                begin_undoable_action ();
                 apply_alignment_to_range (justification, start, end);
+                end_undoable_action ();
             }
         }
 
@@ -377,6 +438,8 @@ namespace Edwin {
             if (iter_at_section_break (end)) {
                 end.forward_char ();
             }
+            begin_undoable_action ();
+            push_undo_operation_delete (start, end);
         }
 
         private void on_delete_range_after (Gtk.TextIter start, Gtk.TextIter end) {
@@ -385,17 +448,25 @@ namespace Edwin {
                     remove_section_break_at_mark (mark);
                 }
             });
+            schedule_end_undoable_action ();
             schedule_scroll_to_cursor ();
         }
 
         private void on_insert_text (ref Gtk.TextIter iter, string text, int len) {
             buffer.move_mark (insert_start_mark, iter);
             insertion_in_progress = true;
+            if (!pasting_in_progress) {
+                justification_before_insert = text_properties_changed ?
+                    toolbar.get_paragraph_alignment () :
+                    get_paragraph_justification (iter);
+            }
         }
 
         private void on_insert_text_after (ref Gtk.TextIter end, string text, int len) {
+            begin_undoable_action ();
             Gtk.TextIter start;
             buffer.get_iter_at_mark (out start, insert_start_mark);
+            push_undo_operation_insert (start, end);
             bool modified;
             var attributes = get_attributes_before (start, out modified);
             if (modified || text_properties_changed) {
@@ -426,13 +497,11 @@ namespace Edwin {
                 }
             }
             if (!pasting_in_progress) {
-                move_to_paragraph_end (ref end);
-                var justification = text_properties_changed ?
-                    toolbar.get_paragraph_alignment () :
-                    get_paragraph_justification (start);
-                apply_alignment_to_range (justification, start, end);
+                var iter = end;
+                move_to_paragraph_end (ref iter);
+                apply_alignment_to_range (justification_before_insert, start, iter);
+                schedule_end_undoable_action ();
             }
-            buffer.move_mark (paste_end_mark, end);
             insertion_in_progress = false;
             text_properties_changed = false;
             schedule_scroll_to_cursor ();
@@ -442,11 +511,104 @@ namespace Edwin {
 |* PRIVATE METHODS *|
 \*******************/
 
+        private void schedule_end_undoable_action () {
+            if (end_undoable_action_handler != 0) {
+                Source.remove (end_undoable_action_handler);
+            }
+            end_undoable_action_handler = Timeout.add (150, () => {
+                end_undoable_action ();
+                end_undoable_action_handler = 0;
+                return false;
+            });
+        }
+        
+        private UndoOperation create_undo_operation (int type, Gtk.TextIter iter1, Gtk.TextIter iter2) {
+            var op = UndoOperation ();
+            op.type = (UndoOperationType) type;
+            op.set_offsets (iter1, iter2);
+            op.pop_next = undo_operation_counter > 0;
+            if (undoable_action_in_progress || redoable_action_in_progress) {
+                undo_operation_counter++;
+            }
+            return op;
+        }
+        
+        private void push_undo_operation (UndoOperation op) {
+            if (redoable_action_in_progress) {
+                redo_stack.push_tail (op);
+                can_redo = true;
+            } else {
+                undo_stack.push_tail (op);
+                can_undo = true;
+            }
+        }
+
+        private void push_undo_operation_insert (Gtk.TextIter start, Gtk.TextIter end) {
+            var op = create_undo_operation (UndoOperationType.INSERT, start, end);
+            push_undo_operation (op);
+        }
+
+        private void push_undo_operation_delete (Gtk.TextIter start, Gtk.TextIter end) {
+            Gtk.TextIter deletions_end;
+            var deletions_buffer = redoable_action_in_progress ? redo_buffer : undo_buffer;
+            deletions_buffer.get_end_iter (out deletions_end);
+            var op = create_undo_operation (UndoOperationType.DELETE, start, deletions_end);
+            deletions_buffer.insert_range (ref deletions_end, start, end);
+            push_undo_operation (op);
+        }
+
+        private void push_undo_operation_tag (Gtk.TextIter start, Gtk.TextIter end, Gtk.TextTag tag, bool tag_applied) {
+            var op = create_undo_operation (UndoOperationType.TAG, start, end);
+            op.tag = tag;
+            op.tag_applied = tag_applied;
+            push_undo_operation (op);
+        }
+        
+        private void apply_undo_operation (UndoOperation op, Gtk.TextBuffer deletions_buffer) {
+            Gtk.TextIter start, end, deletions_start, deletions_end;
+            switch (op.type) {
+            case UndoOperationType.INSERT:
+                op.get_iter_at_offset (out start, 0, buffer);
+                op.get_iter_at_offset (out end, 1, buffer);
+                buffer.@delete (ref start, ref end);
+                buffer.place_cursor (start);
+                break;
+            case UndoOperationType.DELETE:
+                op.get_iter_at_offset (out start, 0, buffer);
+                op.get_iter_at_offset (out deletions_start, 1, deletions_buffer);
+                deletions_buffer.get_end_iter (out deletions_end);
+                buffer.insert_range (ref start, deletions_start, deletions_end);
+                deletions_buffer.@delete (ref deletions_start, ref deletions_end);
+                buffer.place_cursor (start);
+                break;
+            case UndoOperationType.TAG:
+                op.get_iter_at_offset (out start, 0, buffer);
+                op.get_iter_at_offset (out end, 1, buffer);
+                if (op.tag_applied) {
+                    buffer.remove_tag (op.tag, start, end);
+                } else {
+                    buffer.apply_tag (op.tag, start, end);
+                }
+                buffer.place_cursor (end);
+                break;
+            default:
+                assert_not_reached ();
+            }
+        }
+
         private void apply_alignment_to_range (int justification, Gtk.TextIter start, Gtk.TextIter end) {
-            buffer.remove_tag (tag_aligned_left, start, end);
-            buffer.remove_tag (tag_aligned_right, start, end);
-            buffer.remove_tag (tag_centered, start, end);
-            buffer.remove_tag (tag_justified, start, end);
+            if (start.equal (end)) {
+                return;
+            }
+            if (start.has_tag (tag_aligned_left)) {
+                buffer.remove_tag (tag_aligned_left, start, end);
+            } else if (start.has_tag (tag_aligned_right)) {
+                buffer.remove_tag (tag_aligned_right, start, end);
+            } else if (start.has_tag (tag_centered)) {
+                buffer.remove_tag (tag_centered, start, end);
+            } else if (start.has_tag (tag_justified)) {
+                buffer.remove_tag (tag_justified, start, end);
+            }
             if (justification != text_view.get_default_attributes ().justification) {
                 switch (justification) {
                 case Gtk.Justification.LEFT:
@@ -489,6 +651,7 @@ namespace Edwin {
         private Gtk.Justification get_paragraph_justification (Gtk.TextIter where) {
             var iter = where;
             move_to_paragraph_start (ref iter);
+            while (iter.ends_line () && iter.backward_char ());
             var attributes = text_view.get_default_attributes ();
             iter.get_attributes (attributes);
             return attributes.justification;
@@ -794,6 +957,51 @@ namespace Edwin {
 |* PUBLIC METHODS *|
 \******************/
 
+        public void begin_undoable_action () {
+            if (!undoable_action_in_progress) {
+                undoable_action_in_progress = true;
+                undo_operation_counter = 0;
+            }
+        }
+
+        public void end_undoable_action () {
+            undoable_action_in_progress = false;
+            undo_operation_counter = 0;
+        }
+
+        public void undo () {
+            if (!can_undo) {
+                return;
+            }
+            redoable_action_in_progress = true;
+            var op = UndoOperation ();
+            do {
+                op = undo_stack.pop_tail ();
+                apply_undo_operation (op, undo_buffer);
+            } while (op.pop_next);
+            redoable_action_in_progress = false;
+            undo_operation_counter = 0;
+            if (undo_stack.get_length () == 0) {
+                can_undo = false;
+            }
+        }
+
+        public void redo () {
+            if (!can_redo) {
+                return;
+            }
+            begin_undoable_action ();
+            var op = UndoOperation ();
+            do {
+                op = redo_stack.pop_tail ();
+                apply_undo_operation (op, redo_buffer);
+            } while (op.pop_next);
+            end_undoable_action ();
+            if (redo_stack.get_length () == 0) {
+                can_redo = false;
+            }
+        }
+
         public new void focus () {
             text_view.grab_focus ();
         }
@@ -821,6 +1029,7 @@ namespace Edwin {
         }
 
         public void insert_section_break (Gtk.TextIter where) {
+            begin_undoable_action ();
             Gtk.TextIter iter = where;
             buffer.insert (ref iter, "\n", -1);
             int vskip = paper_size.bottom_margin + section_skip_after;
@@ -829,6 +1038,7 @@ namespace Edwin {
             vskip -= rect.height;
             uint n = create_section_break (iter, vskip);
             buffer.insert_with_tags (ref iter, "\n", -1, section_breaks.nth_data (n).tag);
+            end_undoable_action ();
             buffer.place_cursor (iter);
             iter.backward_char ();
         }
