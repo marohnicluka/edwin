@@ -104,10 +104,12 @@ namespace Edwin {
         bool insertion_in_progress = false;
         bool pasting_in_progress = false;
         bool redoing_in_progress = false;
-        bool undoable_action_in_progress = false;
+        bool user_action_in_progress = false;
         bool redoable_action_in_progress = false;
+        bool deletion_in_progress = false;
+        bool user_is_deleting = false;
+        bool user_is_typing = false;
         uint scroll_handler = 0;
-        uint end_undoable_action_handler = 0;
         uint update_toolbar_handler = 0;
         uint section_break_serial = 0;
         uint undo_operation_counter = 0;
@@ -230,7 +232,6 @@ namespace Edwin {
 \*************/
 
         private void on_realize () {
-            set_defaults ();
 			var win = this.get_view_window ();
 			var events = win.get_events ();
 			win.set_events (events & ~Gdk.EventMask.FOCUS_CHANGE_MASK);
@@ -239,6 +240,8 @@ namespace Edwin {
             text_view.paste_clipboard.connect (on_paste_clipboard);
             text_view.drag_begin.connect (on_drag_begin);
             text_view.drag_end.connect (on_drag_end);
+            text_view.backspace.connect (on_backspace);
+            text_view.delete_from_cursor.connect (on_delete_from_cursor);
             buffer.notify["cursor-position"].connect (on_cursor_position_changed);
             buffer.notify["has-selection"].connect (on_has_selection_changed);
             buffer.notify["text"].connect (on_text_changed);
@@ -258,6 +261,19 @@ namespace Edwin {
             toolbar.text_italic_toggled.connect (on_text_italic_toggled);
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
             toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
+            set_defaults ();
+        }
+        
+        private void on_backspace () {
+            if (!user_is_deleting) {
+                begin_user_action ();
+                user_is_deleting = true;
+                user_is_typing = false;
+            }
+        }
+        
+        private void on_delete_from_cursor (Gtk.DeleteType type, int count) {
+            on_backspace ();
         }
         
         private void on_modified_changed () {
@@ -274,18 +290,18 @@ namespace Edwin {
         
         private void on_drag_begin (Gdk.DragContext context) {
             debug ("Drag started");
-            begin_undoable_action ();
+            begin_user_action ();
         }
         
         private void on_drag_end (Gdk.DragContext context) {
             debug ("Drag ended");
-            end_undoable_action ();
+            end_user_action ();
         }
 
         private void on_paste_clipboard () {
             pasting_in_progress = true;
             buffer.move_mark (pasted_start_mark, cursor);
-            begin_undoable_action ();
+            begin_user_action ();
         }
 
         private void on_paste_done (Gtk.Clipboard clipboard) {
@@ -293,7 +309,7 @@ namespace Edwin {
             Gtk.TextIter pasted_start;
             buffer.get_iter_at_mark (out pasted_start, pasted_start_mark);
             restore_section_breaks (pasted_start, cursor);
-            end_undoable_action ();
+            end_user_action ();
         }
         
         private void on_apply_tag (Gtk.TextTag tag, Gtk.TextIter start, Gtk.TextIter end) {
@@ -390,9 +406,9 @@ namespace Edwin {
             if (start.equal (end)) {
                 text_properties_changed = true;
             } else {
-                begin_undoable_action ();
+                begin_user_action ();
                 apply_alignment_to_range (justification, start, end);
-                end_undoable_action ();
+                end_user_action ();
             }
         }
 
@@ -418,17 +434,25 @@ namespace Edwin {
             case Gdk.Key.Return:
                 if (ctrl) {
                     Gtk.TextIter start, end;
-                    begin_undoable_action ();
+                    begin_user_action ();
                     if (buffer.get_selection_bounds (out start, out end)) {
                         buffer.@delete (ref start, ref end);
                         insert_section_break (start);
                     } else {
                         insert_section_break (cursor);
                     }
-                    end_undoable_action ();
+                    end_user_action ();
                     return true;
                 }
                 break;
+            }
+            if (event.str.get_char ().isgraph () && !user_is_typing) {
+                begin_user_action ();
+                user_is_typing = true;
+                user_is_deleting = false;
+            }
+            if (event.str.get_char ().isspace ()) {
+                begin_user_action ();
             }
             return false;
         }
@@ -462,6 +486,13 @@ namespace Edwin {
             }
             if (!insertion_in_progress) {
                 text_properties_changed = false;
+                user_is_typing = false;
+            }
+            if (!deletion_in_progress) {
+                user_is_deleting = false;
+            }
+            if (user_action_in_progress && !insertion_in_progress && !deletion_in_progress) {
+                end_user_action ();
             }
             cursor_movement_direction = 0;
             schedule_scroll_to_cursor ();
@@ -477,11 +508,8 @@ namespace Edwin {
             if (iter_at_section_break (end)) {
                 end.forward_char ();
             }
-            begin_undoable_action ();
+            deletion_in_progress = true;
             push_undo_operation_delete (start, end);
-            if (!redoable_action_in_progress && !redoing_in_progress) {
-                schedule_end_undoable_action ();
-            }
         }
 
         private void on_delete_range_after (Gtk.TextIter start, Gtk.TextIter end) {
@@ -493,6 +521,7 @@ namespace Edwin {
                 }
             });
             debug ("%d section breaks deleted", count);
+            deletion_in_progress = false;
             schedule_scroll_to_cursor ();
         }
 
@@ -507,7 +536,6 @@ namespace Edwin {
         }
 
         private void on_insert_text_after (ref Gtk.TextIter end, string text, int len) {
-            begin_undoable_action ();
             Gtk.TextIter start;
             buffer.get_iter_at_mark (out start, insert_start_mark);
             push_undo_operation_insert (start, end);
@@ -534,20 +562,19 @@ namespace Edwin {
                 apply_tag_with_id (size_tag, "text-size", start, end);
                 apply_tag_with_id (color_tag, "text-color", start, end);
                 if (has_bold_tag) {
-                    buffer.apply_tag_by_name ("bold", start, end);
+                    buffer.apply_tag (tag_bold, start, end);
                 }
                 if (has_italic_tag) {
-                    buffer.apply_tag_by_name ("italic", start, end);
+                    buffer.apply_tag (tag_italic, start, end);
                 }
                 if (has_underline_tag) {
-                    buffer.apply_tag_by_name ("underline", start, end);
+                    buffer.apply_tag (tag_underline, start, end);
                 }
             }
             if (!pasting_in_progress) {
                 var iter = end;
                 move_to_paragraph_end (ref iter);
                 apply_alignment_to_range (justification_before_insert, start, iter);
-                schedule_end_undoable_action ();
             }
             insertion_in_progress = false;
             text_properties_changed = false;
@@ -558,23 +585,12 @@ namespace Edwin {
 |* PRIVATE METHODS *|
 \*******************/
 
-        private void schedule_end_undoable_action () {
-            if (end_undoable_action_handler != 0) {
-                Source.remove (end_undoable_action_handler);
-            }
-            end_undoable_action_handler = Timeout.add (300, () => {
-                end_undoable_action ();
-                end_undoable_action_handler = 0;
-                return false;
-            });
-        }
-        
         private UndoOperation create_undo_operation (int type, Gtk.TextIter iter1, Gtk.TextIter iter2) {
             var op = UndoOperation ();
             op.type = (UndoOperationType) type;
             op.set_offsets (iter1, iter2);
             op.index_within_action = undo_operation_counter;
-            if (undoable_action_in_progress || redoable_action_in_progress) {
+            if (user_action_in_progress || redoable_action_in_progress) {
                 undo_operation_counter++;
             }
             return op;
@@ -596,12 +612,12 @@ namespace Edwin {
         }
 
         private void push_undo_operation_delete (Gtk.TextIter start, Gtk.TextIter end) {
-            Gtk.TextIter chunk_end, chunk_start = Gtk.TextIter ();
+            Gtk.TextIter chunk_start, chunk_end;
             var chunk_buffer = redoable_action_in_progress ? redo_buffer : undo_buffer;
             chunk_buffer.get_end_iter (out chunk_end);
-            chunk_start.assign (chunk_end);
             var op = create_undo_operation (UndoOperationType.DELETE, start, chunk_end);
             chunk_buffer.insert_range (ref chunk_end, start, end);
+            chunk_buffer.get_bounds (out chunk_start, out chunk_end);
             buffer.tag_table.@foreach ((tag) => {
                 if (tag.name != null && tag.name.has_prefix ("gtkspell")) {
                     chunk_buffer.remove_tag (tag, chunk_start, chunk_end);
@@ -1036,15 +1052,13 @@ namespace Edwin {
 |* PUBLIC METHODS *|
 \******************/
 
-        public void begin_undoable_action () {
-            if (!undoable_action_in_progress) {
-                undoable_action_in_progress = true;
-                undo_operation_counter = 0;
-            }
+        public void begin_user_action () {
+            user_action_in_progress = true;
+            undo_operation_counter = 0;
         }
 
-        public void end_undoable_action () {
-            undoable_action_in_progress = false;
+        public void end_user_action () {
+            user_action_in_progress = false;
             undo_operation_counter = 0;
         }
 
@@ -1052,6 +1066,7 @@ namespace Edwin {
             if (!can_undo) {
                 return;
             }
+            end_user_action ();
             redoable_action_in_progress = true;
             UndoOperation? op = null;
             do {
@@ -1068,7 +1083,7 @@ namespace Edwin {
             if (!can_redo) {
                 return;
             }
-            begin_undoable_action ();
+            begin_user_action ();
             redoing_in_progress = true;
             UndoOperation? op = null;
             do {
@@ -1076,7 +1091,7 @@ namespace Edwin {
                 assert (op != null);
                 apply_undo_operation (op, redo_buffer);
             } while (op.index_within_action > 0);
-            end_undoable_action ();
+            end_user_action ();
             redoing_in_progress = false;
             can_redo = redo_stack.length > 0;
         }
