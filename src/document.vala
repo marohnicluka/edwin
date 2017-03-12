@@ -313,6 +313,7 @@ namespace Edwin {
         }
         
         private void on_apply_tag (Gtk.TextTag tag, Gtk.TextIter start, Gtk.TextIter end) {
+            print ("TAG: %s\n", tag.name);
             if (tag.name == null || !tag.name.has_prefix ("gtkspell")) {
                 push_undo_operation_tag (start, end, tag, true);
             }
@@ -437,10 +438,12 @@ namespace Edwin {
                     begin_user_action ();
                     if (buffer.get_selection_bounds (out start, out end)) {
                         buffer.@delete (ref start, ref end);
-                        insert_section_break (start);
-                    } else {
-                        insert_section_break (cursor);
                     }
+                    buffer.insert_at_cursor ("\n", -1);
+                    var n = create_section_break (cursor);
+                    buffer.insert_at_cursor ("\n", -1);
+                    buffer.get_iter_at_mark (out start, section_breaks.nth_data (n).mark);
+                    buffer.apply_tag (section_breaks.nth_data (n).tag, start, cursor);
                     end_user_action ();
                     return true;
                 }
@@ -466,7 +469,11 @@ namespace Edwin {
             var iter = cursor;
             if (iter_at_section_break (iter) && cursor_movement_direction != 0) {
                 iter.forward_chars (Utils.sgn (cursor_movement_direction));
-                buffer.place_cursor (iter);
+                if (buffer.has_selection) {
+                    buffer.move_mark (buffer.get_insert (), iter);
+                } else {
+                    buffer.place_cursor (iter);
+                }
             } else if (iter.has_tag (tag_skip) && !iter.toggles_tag (tag_skip)) {
                 int test = cursor_movement_direction;
                 if (buffer.has_selection) {
@@ -539,42 +546,41 @@ namespace Edwin {
             Gtk.TextIter start;
             buffer.get_iter_at_mark (out start, insert_start_mark);
             push_undo_operation_insert (start, end);
-            if (redoable_action_in_progress || redoing_in_progress) {
-                return;
-            }
-            bool modified;
-            var attributes = get_attributes_before (start, out modified);
-            if (modified || text_properties_changed) {
-                var font_desc = text_properties_changed ?
-                    toolbar.get_text_font_desc () :
-                    attributes.font;
-                var family_tag = get_font_family_tag (font_desc.get_family ());
-                var size_tag = get_text_size_tag (font_desc.get_size ());
-                var color_tag = get_text_color_tag (text_properties_changed ?
-                    toolbar.get_text_color () :
-                    get_text_color (start));
-                bool has_bold_tag = font_desc.get_weight () == Pango.Weight.BOLD;
-                bool has_italic_tag = font_desc.get_style () == Pango.Style.ITALIC;
-                bool has_underline_tag = text_properties_changed ?
-                    toolbar.get_underline_state () :
-                    attributes.appearance.underline == Pango.Underline.SINGLE;
-                apply_tag_with_id (family_tag, "font-family", start, end);
-                apply_tag_with_id (size_tag, "text-size", start, end);
-                apply_tag_with_id (color_tag, "text-color", start, end);
-                if (has_bold_tag) {
-                    buffer.apply_tag (tag_bold, start, end);
+            if (!redoable_action_in_progress && !redoing_in_progress) {
+                bool modified;
+                var attributes = get_attributes_before (start, out modified);
+                if (modified || text_properties_changed) {
+                    var font_desc = text_properties_changed ?
+                        toolbar.get_text_font_desc () :
+                        attributes.font;
+                    var family_tag = get_font_family_tag (font_desc.get_family ());
+                    var size_tag = get_text_size_tag (font_desc.get_size ());
+                    var color_tag = get_text_color_tag (text_properties_changed ?
+                        toolbar.get_text_color () :
+                        get_text_color (start));
+                    bool has_bold_tag = font_desc.get_weight () == Pango.Weight.BOLD;
+                    bool has_italic_tag = font_desc.get_style () == Pango.Style.ITALIC;
+                    bool has_underline_tag = text_properties_changed ?
+                        toolbar.get_underline_state () :
+                        attributes.appearance.underline == Pango.Underline.SINGLE;
+                    apply_tag_with_id (family_tag, "font-family", start, end);
+                    apply_tag_with_id (size_tag, "text-size", start, end);
+                    apply_tag_with_id (color_tag, "text-color", start, end);
+                    if (has_bold_tag) {
+                        buffer.apply_tag (tag_bold, start, end);
+                    }
+                    if (has_italic_tag) {
+                        buffer.apply_tag (tag_italic, start, end);
+                    }
+                    if (has_underline_tag) {
+                        buffer.apply_tag (tag_underline, start, end);
+                    }
                 }
-                if (has_italic_tag) {
-                    buffer.apply_tag (tag_italic, start, end);
+                if (!pasting_in_progress) {
+                    var iter = end;
+                    move_to_paragraph_end (ref iter);
+                    apply_alignment_to_range (justification_before_insert, start, iter);
                 }
-                if (has_underline_tag) {
-                    buffer.apply_tag (tag_underline, start, end);
-                }
-            }
-            if (!pasting_in_progress) {
-                var iter = end;
-                move_to_paragraph_end (ref iter);
-                apply_alignment_to_range (justification_before_insert, start, iter);
             }
             insertion_in_progress = false;
             text_properties_changed = false;
@@ -643,12 +649,15 @@ namespace Edwin {
                 buffer.place_cursor (start);
                 break;
             case UndoOperationType.DELETE:
-                op.get_iter_at_offset (out start, 0, buffer);
+                op.get_iter_at_offset (out end, 0, buffer);
+                buffer.move_mark (pasted_start_mark, end);
                 op.get_iter_at_offset (out chunk_start, 1, chunk_buffer);
                 chunk_buffer.get_end_iter (out chunk_end);
-                buffer.insert_range (ref start, chunk_start, chunk_end);
+                buffer.insert_range (ref end, chunk_start, chunk_end);
                 chunk_buffer.@delete (ref chunk_start, ref chunk_end);
-                buffer.place_cursor (start);
+                buffer.get_iter_at_mark (out start, pasted_start_mark);
+                restore_section_breaks (start, end);
+                buffer.place_cursor (end);
                 break;
             case UndoOperationType.TAG:
                 op.get_iter_at_offset (out start, 0, buffer);
@@ -712,6 +721,9 @@ namespace Edwin {
             var attributes = text_view.get_default_attributes ();
             var iter = where;
             if (iter.backward_char ()) {
+                if (iter_at_section_break (iter)) {
+                    iter.backward_chars (2);
+                }
                 modified = iter.get_attributes (attributes);
             }
             return attributes;
@@ -856,7 +868,7 @@ namespace Edwin {
             });
         }
 
-        private bool move_to_tag_toggle (ref Gtk.TextIter iter, bool forward, string id, int dir = 0) {
+        private bool move_to_tag_toggle (ref Gtk.TextIter iter, bool forward, string id, int dir = 0, out unowned Gtk.TextTag toggled_tag = null) {
             do {
                 SList<weak Gtk.TextTag> tags, tmp_tags;
                 switch (dir) {
@@ -876,10 +888,12 @@ namespace Edwin {
                 }
                 foreach (var tag in tags) {
                     if (tag.name != null && tag.name.has_prefix (id)) {
+                        toggled_tag = tag;
                         return true;
                     }
                 }
             } while (forward ? iter.forward_to_tag_toggle (null) : iter.backward_to_tag_toggle (null));
+            toggled_tag = null;
             return false;
         }
 
@@ -967,16 +981,6 @@ namespace Edwin {
             return false;
         }
 
-        private void remove_section_break_at_mark (Gtk.TextMark mark) {
-            section_breaks.@foreach ((section_break) => {
-                if (section_break.mark == mark) {
-                    buffer.delete_mark (mark);
-                    buffer.tag_table.remove (section_break.tag);
-                    section_breaks.remove (section_break);
-                }
-            });
-        }
-
         private Gdk.Rectangle get_viewport_rectangle () {
             return Gdk.Rectangle () {
                 x = (int) Math.round (hadjustment.@value),
@@ -1004,14 +1008,26 @@ namespace Edwin {
             dy = viewport_rect.y > un.y ? un.y - viewport_rect.y : un.height - viewport_rect.height;
         }
 
-        private uint create_section_break (Gtk.TextIter iter, int vskip) {
-            uint n;
-            Gtk.TextIter break_iter;
+        private void remove_section_break_at_mark (Gtk.TextMark mark) {
+            section_breaks.@foreach ((section_break) => {
+                if (section_break.mark == mark) {
+                    buffer.delete_mark (mark);
+                    section_breaks.remove (section_break);
+                }
+            });
+        }
+
+        private uint create_section_break (Gtk.TextIter iter) {
+            Gdk.Rectangle rect;
+            get_location (iter, out rect, false);
+            int vskip = paper_size.bottom_margin + section_skip_after - rect.height;
             string name = "section-break-%u".printf (section_break_serial++);
             var section_break = SectionBreak () {
                 mark = buffer.create_mark (name, iter, true),
                 tag = buffer.create_tag (name, "pixels-below-lines", vskip)
             };
+            Gtk.TextIter break_iter;
+            uint n;
             for (n = 0; n < section_breaks.length (); n++) {
                 buffer.get_iter_at_mark (out break_iter, section_breaks.nth_data (n).mark);
                 if (iter.compare (break_iter) < 0) {
@@ -1022,27 +1038,19 @@ namespace Edwin {
             return n;
         }
         
-        private void insert_section_break (Gtk.TextIter where) {
-            Gtk.TextIter iter = where;
-            buffer.insert (ref iter, "\n", -1);
-            Gdk.Rectangle rect;
-            get_location (iter, out rect, false);
-            int vskip = paper_size.bottom_margin + section_skip_after - rect.height;
-            uint n = create_section_break (iter, vskip);
-            buffer.insert_with_tags (ref iter, "\n", -1, section_breaks.nth_data (n).tag);
-            buffer.place_cursor (iter);
-            iter.backward_char ();
-        }
-
         private void restore_section_breaks (Gtk.TextIter start, Gtk.TextIter end) {
             var iter = start;
             int count = 0;
-            while (move_to_tag_toggle (ref iter, true, "section-break", -1) && iter.compare (end) < 0) {
-                var section_break_start = iter;
-                section_break_start.backward_char ();
+            while (
+                move_to_tag_toggle (ref iter, true, "section-break", -1) &&
+                iter.compare (end) < 0)
+            {
+                var n = create_section_break (iter);
+                var next_iter = iter;
+                next_iter.forward_char ();
+                remove_tags ("section-break", iter, next_iter);
+                buffer.apply_tag (section_breaks.nth_data (n).tag, iter, next_iter);
                 iter.forward_char ();
-                buffer.@delete (ref section_break_start, ref iter);
-                insert_section_break (iter);
                 count++;
             }
             debug ("%d section breaks restored", count);
@@ -1098,28 +1106,6 @@ namespace Edwin {
 
         public new void focus () {
             text_view.grab_focus ();
-        }
-
-        public void delete_unused_tags () {
-            var iter = Gtk.TextIter ();
-            buffer.tag_table.@foreach ((tag) => {
-                buffer.get_start_iter (out iter);
-                if (!iter.has_tag (tag) && !iter.forward_to_tag_toggle (tag)) {
-                    if (tag.name == null) {
-                        return;
-                    }
-                    if (tag.name.has_prefix ("font-family")) {
-                        assert (font_family_tags.remove (tag.name.substring (12)));
-                    } else if (tag.name.has_prefix ("text-size")) {
-                        assert (text_size_tags.remove (int.parse (tag.name.substring (10)) * Pango.SCALE));
-                    } else if (tag.name.has_prefix ("text-color")) {
-                        var color = Gdk.RGBA ();
-                        color.parse (tag.name.substring (11));
-                        assert (text_color_tags.remove (color));
-                    } else return;
-                    buffer.tag_table.remove (tag);
-                }
-            });
         }
 
         public int move_to_section_start (ref Gtk.TextIter iter) {
