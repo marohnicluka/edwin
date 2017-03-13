@@ -19,7 +19,7 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	textbuffer.vala
 	textview.vala
 	papersize.vala
-	paragraphstyles.vala
+	paragraphstyle.vala
 	styletemplates.vala
 	fontfamilychooser.vala
 	settings.vala

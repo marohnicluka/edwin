@@ -76,9 +76,6 @@ namespace Edwin {
         bool user_is_deleting = false;
         bool user_is_typing = false;
         
-        public signal void section_breaks_deleted (uint[] indexes);
-        public signal void section_break_inserted (uint n);
-
 /****************\
 |* CONSTRUCTION *|
 \****************/
@@ -321,8 +318,9 @@ namespace Edwin {
             });
             if (deleted_section_breaks.length > 0) {
                 debug ("Deleted %d section breaks", deleted_section_breaks.length);
+                text_view.remove_sections (deleted_section_breaks);
             }
-            section_breaks_deleted (deleted_section_breaks);
+            text_view.mark_section_at_iter_dirty (start);
             deletion_in_progress = false;
             text_view.schedule_scroll_to_cursor ();
         }
@@ -338,6 +336,7 @@ namespace Edwin {
         private void on_insert_text_after (ref Gtk.TextIter end, string text, int len) {
             Gtk.TextIter start;
             get_iter_at_mark (out start, insert_start_mark);
+            text_view.mark_section_at_iter_dirty (start);
             doc.push_undo_operation_insert (start, end);
             if (!doc.doing_undo_redo) {
                 style_inserted_text (start, end);
@@ -541,7 +540,7 @@ namespace Edwin {
                 }
             }
             section_breaks.insert (section_break, (int) n);
-            section_break_inserted (n);
+            text_view.insert_section (n + 1);
             section_break_serial++;
             return n;
         }
@@ -575,7 +574,9 @@ namespace Edwin {
                 iter.forward_char ();
                 count++;
             }
-            debug ("%d section breaks restored", count);
+            if (count > 0) {
+                debug ("%d section breaks restored", count);
+            }
         }
 
         public void move_to_paragraph_start (ref Gtk.TextIter iter) {
@@ -590,19 +591,21 @@ namespace Edwin {
 
         public int move_to_section_start (ref Gtk.TextIter iter) {
             Gtk.TextIter start;
+            get_start_iter (out iter);
+            if (section_breaks.length () == 0) {
+                return -1;
+            }
             uint n = 0;
             for (; n < section_breaks.length (); n++) {
                 get_iter_at_mark (out start, section_breaks.nth_data (n).mark);
                 if (iter.compare (start) < 0) {
                     if (n == 0) {
-                        get_start_iter (out iter);
                         return -1;
                     }
                     break;
                 }
             }
-            get_iter_at_mark (out start, section_breaks.nth_data (n - 1).mark);
-            iter.assign (start);
+            get_iter_at_mark (out iter, section_breaks.nth_data (n - 1).mark);
             iter.forward_char ();
             return (int) n - 1;
         }
@@ -618,20 +621,6 @@ namespace Edwin {
                 }
             }
             get_end_iter (out iter);
-        }
-
-        public uint get_section_bounds (Gtk.TextIter where, out Gtk.TextIter start, out Gtk.TextIter end) {
-            start = Gtk.TextIter ();
-            start.assign (where);
-            int index = move_to_section_start (ref start);
-            index++;
-            if (index < section_breaks.length ()) {
-                get_iter_at_mark (out end, section_breaks.nth_data ((uint) index).mark);
-                end.backward_char ();
-            } else {
-                get_end_iter (out end);
-            }
-            return (uint) index;
         }
 
         public bool forward_paragraph (ref Gtk.TextIter iter, bool stop_after_section_break = false) {
