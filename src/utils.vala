@@ -126,4 +126,27 @@ namespace Edwin.Utils {
         return new Gtk.Image.from_resource (path);
     }
         
+    public Gtk.ToolButton create_tool_button (string icon_name, string? action_name, string? tooltip) {
+        var image = "::" in icon_name ?
+            get_icon (icon_name) : new Gtk.Image.from_icon_name (icon_name, Gtk.IconSize.BUTTON);
+        var button = new Gtk.ToolButton (image, null);
+        if (action_name != null) {
+            button.set_action_name (@"win.$action_name");
+        }
+        button.set_tooltip_text (tooltip);
+        return button;
+    }
+        
+    private Gtk.ToggleToolButton create_toggle_button (string icon_name, string? action_name, string? tooltip) {
+        var image = "::" in icon_name ?
+            get_icon (icon_name) : new Gtk.Image.from_icon_name (icon_name, Gtk.IconSize.BUTTON);
+        var button = new Gtk.ToggleToolButton ();
+        button.set_icon_widget (image);
+        if (action_name != null) {
+            button.set_action_name (@"win.$action_name");
+        }
+        button.set_tooltip_text (tooltip);
+        return button;
+    }
+        
 }

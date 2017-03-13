@@ -28,9 +28,33 @@ namespace Edwin {
         public int right_margin { get; set; }
         public int top_margin { get; set; }
         public int bottom_margin { get; set; }
+        public int inner_margin { get; set; default = 0; }
+        public int left_border_area_width { get; set; default = 0; }
+        public int right_border_area_width { get; set; default = 0; }
+        public int border_area_separator { get; set; default = 0; }
         
         public int text_height { get { return height - top_margin - bottom_margin; } }
-        public int text_width { get { return width - left_margin - right_margin; } }
+        public int text_width {
+            get {
+                int comp = left_margin + right_margin;
+                if (left_border_area_width > 0) {
+                    comp += left_border_area_width + border_area_separator;
+                }
+                if (right_border_area_width > 0) {
+                    comp += right_border_area_width + border_area_separator;
+                }
+                return width - comp;
+            }
+        }
+        public int text_area_start {
+            get {
+                int x = left_margin;
+                if (left_border_area_width > 0) {
+                    x += left_border_area_width + border_area_separator;
+                }
+                return x;
+            }
+        }                
         
         string _name;
         public string name {

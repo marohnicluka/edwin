@@ -16,8 +16,11 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	toolbar.vala
 	statusbar.vala
 	document.vala
+	textbuffer.vala
 	textview.vala
 	papersize.vala
+	paragraphstyles.vala
+	styletemplates.vala
 	fontfamilychooser.vala
 	settings.vala
 	utils.vala

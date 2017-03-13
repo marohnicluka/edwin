@@ -76,23 +76,6 @@ namespace Edwin {
             insert_action_group ("win", win_actions);
         }
         
-        private Gtk.ToolButton create_button (string icon_name, string action_name, string tooltip) {
-            var image = new Gtk.Image.from_icon_name (icon_name, Gtk.IconSize.LARGE_TOOLBAR);
-            var button = new Gtk.ToolButton (image, null);
-            button.set_action_name (@"win.$action_name");
-            button.set_tooltip_text (tooltip);
-            return button;
-        }
-        
-        private Gtk.ToggleToolButton create_toggle_button (string icon_name, string action_name, string tooltip) {
-            var image = new Gtk.Image.from_icon_name (icon_name, Gtk.IconSize.BUTTON);
-            var button = new Gtk.ToggleToolButton ();
-            button.set_icon_widget (image);
-            button.set_action_name (@"win.$action_name");
-            button.set_tooltip_text (tooltip);
-            return button;
-        }
-        
         private void init_header_bar () {
             header_bar = new Gtk.HeaderBar ();
             header_bar.get_style_context ().add_class ("primary-toolbar");
@@ -105,17 +88,28 @@ namespace Edwin {
             app_menu.show_about.connect (app.show_about);
             header_bar.pack_end (app_menu);
             /* add buttons */
-            button_new = create_button ("document-new", "NewDocument", _("Add a new document"));
-            button_open = create_button ("document-open", "OpenDocument", _("Open a saved document"));
-            button_save = create_button ("document-save", "SaveDocument", _("Save document"));
-            button_export = create_button ("document-export", "Export", _("Export"));
-            button_print = create_button ("document-print", "Print", _("Print document"));
-            button_page_setup = create_button ("document-page-setup", "PageSetup", _("Page setup"));
-            button_properties = create_button ("gtk-properties", "DocumentProperties", _("Document properties"));
-            button_search = create_toggle_button ("edit-find", "Search", _("Search"));
-            button_undo = create_button ("edit-undo", "Undo", _("Undo"));
-            button_redo = create_button ("edit-redo", "Redo", _("Redo"));
-            button_spelling = create_toggle_button ("tools-check-spelling", "CheckSpelling", _("Check spelling"));
+            button_new = Utils.create_tool_button ("document-new", "NewDocument",
+                _("Add a new document"));
+            button_open = Utils.create_tool_button ("document-open", "OpenDocument",
+                _("Open a saved document"));
+            button_save = Utils.create_tool_button ("document-save", "SaveDocument",
+                _("Save document"));
+            button_export = Utils.create_tool_button ("document-export", "Export",
+                _("Export"));
+            button_print = Utils.create_tool_button ("document-print", "Print",
+                _("Print document"));
+            button_page_setup = Utils.create_tool_button ("document-page-setup", "PageSetup",
+                _("Page setup"));
+            button_properties = Utils.create_tool_button ("gtk-properties", "DocumentProperties",
+                _("Document properties"));
+            button_undo = Utils.create_tool_button ("edit-undo", "Undo",
+                _("Undo"));
+            button_redo = Utils.create_tool_button ("edit-redo", "Redo",
+                _("Redo"));
+            button_search = Utils.create_toggle_button ("edit-find", "Search",
+                _("Search"));
+            button_spelling = Utils.create_toggle_button ("tools-check-spelling", "CheckSpelling",
+                _("Check spelling"));
             /* pack buttons */
             header_bar.pack_start (button_new);
             header_bar.pack_start (button_open);
@@ -149,18 +143,29 @@ namespace Edwin {
         
         private void connect_signals () {
             this.realize.connect (() => {
-                button_undo.sensitive = false;
-                button_redo.sensitive = false;
+                action_set_enabled ("Undo", false);
+                action_set_enabled ("Redo", false);
+                document.focus ();
             });
             toolbar.return_focus_to_document.connect (() => {
                 document.focus ();
             });
             document.notify["can-undo"].connect (() => {
-                button_undo.sensitive = document.can_undo;
+                action_set_enabled ("Undo", document.can_undo);
             });
             document.notify["can-redo"].connect (() => {
-                button_redo.sensitive = document.can_redo;
+                action_set_enabled ("Redo", document.can_redo);
             });
+        }
+        
+        public SimpleAction get_action (string name) {
+            var action = win_actions.lookup_action (name);
+            assert (action != null);
+            return action as SimpleAction;
+        }
+        
+        public void action_set_enabled (string name, bool enabled) {
+            get_action (name).set_enabled (enabled);
         }
         
         public void show_document (Document doc) {

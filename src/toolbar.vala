@@ -32,11 +32,13 @@ namespace Edwin {
         const int DEFAULT_FONT_SIZE = 12;
         const int[] FONT_SIZES = { 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 21, 24, 36, 48, 60, 72 };
         
-        public class StyleChooser : Gtk.ComboBoxText {
-            public StyleChooser () {
+        public class ParagraphStyleChooser : Gtk.ComboBoxText {
+            public ParagraphStyleChooser (string name) {
+                this.name = name;
                 can_focus = false;
                 append ("none",         _("None"));
-                append ("paragraph",    _("Paragraph"));
+                append ("default",      _("Default style"));
+                append ("body",         _("Text body"));
                 append ("heading-1",    _("Heading 1"));
                 append ("heading-2",    _("Heading 2"));
                 append ("heading-3",    _("Heading 3"));
@@ -49,17 +51,17 @@ namespace Edwin {
                     return item != "none";
                 });
                 set_model (model_filter);
-                active_id = "paragraph";
+                active_id = "default";
             }
         }
         
-        public class SizeChooser : Gtk.ComboBoxText {
+        public class TextSizeChooser : Gtk.ComboBoxText {
             public unowned Gtk.Entry entry {
                 get { return get_child () as Gtk.Entry; }
             }
             
-            public SizeChooser () {
-                Object (can_focus: false, has_entry: true);
+            public TextSizeChooser (string nom) {
+                Object (name: nom, can_focus: false, has_entry: true);
                 foreach (var size in FONT_SIZES) {
                     append_text (size.to_string ());
                 }
@@ -75,7 +77,8 @@ namespace Edwin {
         
             public FontFamilyChooser chooser;
             
-            public FontButton () {
+            public FontButton (string name) {
+                this.name = name;
                 can_focus = false;
                 xalign = 0.0f;
                 chooser = new FontFamilyChooser (this);
@@ -95,7 +98,8 @@ namespace Edwin {
         }
         
         public class ColorChooser : Gtk.ColorButton {
-            public ColorChooser () {
+            public ColorChooser (string name) {
+                this.name = name;
                 can_focus = false;
                 rgba = Gdk.RGBA () { red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0 };
                 title = _("Choose Text Color");
@@ -108,7 +112,8 @@ namespace Edwin {
         }
         
         public class ToolBox : Gtk.Box {
-            public ToolBox (bool homogeneous = true) {
+            public ToolBox (string name, bool homogeneous = true) {
+                this.name = name;
                 this.homogeneous = homogeneous;
                 spacing = 0;
                 can_focus = false;
@@ -124,7 +129,8 @@ namespace Edwin {
             
             public signal void changed (int index);
             
-            public ModeButton () {
+            public ModeButton (string name) {
+                this.name = name;
                 mode_changed.connect (() => {
                     changed (selected);
                 });
@@ -148,8 +154,8 @@ namespace Edwin {
         }
         
         public class AlignmentButton : ModeButton {
-            public AlignmentButton () {
-                base ();
+            public AlignmentButton (string name) {
+                base (name);
                 assert (Gtk.Justification.LEFT == append (Utils.get_icon ("text-tools::aligned-left")));
                 assert (Gtk.Justification.RIGHT == append (Utils.get_icon ("text-tools::aligned-right")));
                 assert (Gtk.Justification.CENTER == append (Utils.get_icon ("text-tools::centered")));
@@ -158,8 +164,8 @@ namespace Edwin {
         }
         
         public class ListButton : ModeButton {
-            public ListButton () {
-                base ();
+            public ListButton (string name) {
+                base (name);
                 assert (TextListType.ENUMERATE == 1 + append (Utils.get_icon ("text-tools::enumerate")));
                 assert (TextListType.ITEMIZE == 1 + append (Utils.get_icon ("text-tools::itemize")));
                 make_inconsistent ();
@@ -182,17 +188,41 @@ namespace Edwin {
         
         unowned MainWindow main_window;
         
-        StyleChooser style_chooser;
-        FontButton font_button;
-        ColorChooser color_button;
-        SizeChooser size_chooser;
+        /* text toolbar */
+        ParagraphStyleChooser paragraph_style_chooser;
+        FontButton text_font_chooser;
+        ColorChooser text_color_chooser;
+        TextSizeChooser text_size_chooser;
         Button button_bold;
         Button button_italic;
         Button button_underline;
         AlignmentButton alignment_button;
         ListButton list_button;
+        /* equation editor toolbar
+        Gtk.ToolButton eq_layout_superscript;
+        Gtk.ToolButton eq_layout_subscript;
+        Gtk.ToolButton eq_layout_subsuperscript;
+        Gtk.ToolButton eq_layout_array;
+        Gtk.ToolButton eq_stacking_fraction;
+        Gtk.ToolButton eq_stacking_fraction_no_line;
+        Gtk.ToolButton eq_stacking_accent;
+        Gtk.ToolButton eq_function_general;
+        Gtk.ToolButton eq_function_square_root;
+        Gtk.ToolButton eq_function_root;
+        Gtk.ToolButton eq_delimiters_bracketing;
+        Gtk.ToolButton eq_delimiters_sequence;
+        Gtk.ToolButton eq_delimiters_spacer;
+        Gtk.ToolButton eq_calculus_integral;
+        Gtk.ToolButton eq_calculus_integral_below;
+        Gtk.ToolButton eq_calculus_integral_below_above;
+        Gtk.ToolButton eq_calculus_limit;
+        Gtk.ToolButton eq_big_operator;
+        Gtk.ToolButton eq_big_operator_below;
+        Gtk.ToolButton eq_big_operator_below_above;
+        */
         
         bool programmatic = false;
+        uint separator_serial = 0;
         
         public signal void paragraph_style_selected (string id);
         public signal void paragraph_alignment_selected (Gtk.Justification justification);
@@ -205,10 +235,6 @@ namespace Edwin {
         public signal void list_type_selected (TextListType type);
         public signal void return_focus_to_document ();
         
-        public unowned Gtk.TextBuffer buffer {
-            get { return main_window.document.buffer; }
-        }
-        
         public ToolBar (MainWindow main_window) {
             this.main_window = main_window;
             create_layout ();
@@ -216,70 +242,72 @@ namespace Edwin {
         }
         
         private void create_layout () {
-            style_chooser = new StyleChooser ();
-            style_chooser.set_size_request (CHOOSER_WIDTH, -1);
-            add_widget (style_chooser);
-            color_button = new ColorChooser ();
-            font_button = new FontButton ();
-            var font_box = new ToolBox (false);
-            font_box.pack_start (font_button);
-            font_box.pack_start (color_button, false);
+            /* text toolbar */
+            paragraph_style_chooser = new ParagraphStyleChooser ("text-toolbar-style-chooser");
+            paragraph_style_chooser.set_size_request (CHOOSER_WIDTH, -1);
+            add_widget (paragraph_style_chooser);
+            text_color_chooser = new ColorChooser ("text-toolbar-color-button");
+            text_font_chooser = new FontButton ("text-toolbar-font-button");
+            var font_box = new ToolBox ("text-toolbar-font-box", false);
+            font_box.pack_start (text_font_chooser);
+            font_box.pack_start (text_color_chooser, false);
             font_box.set_size_request (CHOOSER_WIDTH, -1);
-            add_separator ();
+            add_separator ("text-toolbar");
             add_widget (font_box);
-            size_chooser = new SizeChooser ();
-            add_separator ();
-            add_widget (size_chooser);
-            var button_box = new ToolBox ();
+            text_size_chooser = new TextSizeChooser ("text-toolbar-size-chooser");
+            add_separator ("text-toolbar");
+            add_widget (text_size_chooser);
+            var button_box = new ToolBox ("text-toolbar-style-box");
             button_bold = new Button ("text-tools::bold", null, null);
             button_italic = new Button ("text-tools::italic", null, null);
             button_underline = new Button ("text-tools::underline", null, null);
             button_box.pack_start (button_bold);
             button_box.pack_start (button_italic);
             button_box.pack_start (button_underline);
-            add_separator ();
+            add_separator ("text-toolbar");
             add_widget (button_box);
-            alignment_button = new AlignmentButton ();
-            add_separator ();
+            alignment_button = new AlignmentButton ("text-toolbar-alignment-button");
+            add_separator ("text-toolbar");
             add_widget (alignment_button);
-            list_button = new ListButton ();
-            add_separator ();
+            list_button = new ListButton ("text-toolbar-list-button");
+            add_separator ("text-toolbar");
             add_widget (list_button);
+            /* equation editor toolbar */
         }
         
         private void connect_signals () {
-            style_chooser.changed.connect (() => {
+            paragraph_style_chooser.changed.connect (() => {
                 if (programmatic) {
                     return;
                 }
-                var id = style_chooser.active_id;
+                var id = paragraph_style_chooser.active_id;
                 debug ("User changed paragraph style to %s", id);
                 paragraph_style_selected (id);
             });
-            font_button.chooser.activated.connect (() => {
-                var family = font_button.chooser.get_selected_family ();
+            text_font_chooser.chooser.activated.connect (() => {
+                var family = text_font_chooser.chooser.get_selected_family ();
                 if (family != null) {
                     debug ("User changed text font to %s", family);
-                    font_button.set_font_family (family);
+                    text_font_chooser.set_font_family (family);
                     font_family_selected (family);
-                    font_button.chooser.hide ();
+                    text_font_chooser.chooser.hide ();
                 }
             });
-            color_button.color_set.connect (() => {
-                var color = color_button.rgba;
+            text_color_chooser.color_set.connect (() => {
+                var color = text_color_chooser.rgba;
                 debug ("User changed text color to %s", color.to_string ());
                 text_color_selected (color);
             });
-            size_chooser.changed.connect (() => {
+            text_size_chooser.changed.connect (() => {
                 if (programmatic) {
                     return;
                 }
-                if (!size_chooser.entry.has_focus) {
+                if (!text_size_chooser.entry.has_focus) {
                     on_user_changed_font_size ();
                     return_focus_to_document ();
                 }
             });
-            size_chooser.entry.activate.connect (() => {
+            text_size_chooser.entry.activate.connect (() => {
                 on_user_changed_font_size ();
                 return_focus_to_document ();
             });
@@ -331,8 +359,9 @@ namespace Edwin {
             add (item);
         }
                   
-        private void add_separator (bool expand = false) {
+        private void add_separator (string toolbar_name, bool expand = false) {
             var separator = new Gtk.SeparatorToolItem ();
+            separator.name = "%s-%u".printf (toolbar_name, separator_serial++);
             add (separator);
             if (expand) {
                 separator.draw = false;
@@ -351,11 +380,11 @@ namespace Edwin {
         }
         
         private void on_user_changed_font_size () {
-            var size = int.parse (size_chooser.entry.text);
+            var size = int.parse (text_size_chooser.entry.text);
             if (size <= 0) {
                 size = DEFAULT_FONT_SIZE;
                 begin_programmatic ();
-                size_chooser.entry.text = size.to_string ();
+                text_size_chooser.entry.text = size.to_string ();
             }
             debug ("User changed text size to %d", size);
             text_size_selected (size);
@@ -367,11 +396,11 @@ namespace Edwin {
         
         public void set_paragraph_style (string id) {
             begin_programmatic ();
-            style_chooser.set_active_id (id);
+            paragraph_style_chooser.set_active_id (id);
         }
         
         public string get_paragraph_style () {
-            return style_chooser.active_id;
+            return paragraph_style_chooser.active_id;
         }
         
         public void set_paragraph_alignment (int alignment) {
@@ -395,20 +424,20 @@ namespace Edwin {
         public void set_text_font_desc (Pango.FontDescription font_desc) {
             assert (font_desc.get_size_is_absolute () == false);
             var family = font_desc.get_family ();
-            font_button.set_font_family (family);
+            text_font_chooser.set_font_family (family);
             begin_programmatic ();
             var size = font_desc.get_size ();
             if (size > 100) {
                 size /= Pango.SCALE;
             }
-            size_chooser.entry.text = size > 0 ? size.to_string () : "";
+            text_size_chooser.entry.text = size > 0 ? size.to_string () : "";
             button_bold.active = font_desc.get_weight () == Pango.Weight.BOLD;
             button_italic.active = font_desc.get_style () == Pango.Style.ITALIC;
         }
         
         public Pango.FontDescription get_text_font_desc () {
-            var font_desc = Pango.FontDescription.from_string (font_button.get_font_family ());
-            string size_text = size_chooser.entry.text;
+            var font_desc = Pango.FontDescription.from_string (text_font_chooser.get_font_family ());
+            string size_text = text_size_chooser.entry.text;
             int size = size_text.length == 0 ? DEFAULT_FONT_SIZE : int.parse (size_text);
             font_desc.set_size (size * Pango.SCALE);
             font_desc.set_weight (button_bold.active ? Pango.Weight.BOLD : Pango.Weight.NORMAL);
@@ -417,24 +446,24 @@ namespace Edwin {
         }
         
         public void set_text_color (Gdk.RGBA color) {
-            color_button.set_rgba (color);
+            text_color_chooser.set_rgba (color);
         }
 
         public Gdk.RGBA get_text_color () {
-            return color_button.rgba;
+            return text_color_chooser.rgba;
         }
         
         public void set_text_size (int size) {
             begin_programmatic ();
-            size_chooser.entry.text = size > 0 ? size.to_string () : "";
+            text_size_chooser.entry.text = size > 0 ? size.to_string () : "";
         }
         
         public void set_font_family (string family) {
-            font_button.set_font_family (family);
+            text_font_chooser.set_font_family (family);
         }
         
         public string get_font_family () {
-            return font_button.get_font_family ();
+            return text_font_chooser.get_font_family ();
         }
         
         public void set_underline_state (bool state) {
