@@ -28,6 +28,10 @@ namespace Edwin {
 
         public const double OUTER_MARGIN = 0.5; // inches
         
+        public struct TextSection {
+            public int[] page_breaks;
+        }
+        
 /*************************\
 |* FIELDS AND PROPERTIES *|
 \*************************/
@@ -41,13 +45,7 @@ namespace Edwin {
         Gdk.RGBA focus_out_color;
         uint scroll_handler = 0;
         uint scroll_to_cursor_handler = 0;
-        private Gtk.TextIter cursor {
-            get {
-                Gtk.TextIter iter;
-                buffer.get_iter_at_mark (out iter, buffer.get_insert ());
-                return iter;
-            }
-        }
+        List<TextSection?> sections = new List<TextSection?> ();
         
 /****************\
 |* CONSTRUCTION *|
@@ -65,6 +63,7 @@ namespace Edwin {
             focus_out_color.parse ("#d3d7cf");
             override_background_color (Gtk.StateFlags.NORMAL, transparent_color);
             override_background_color (Gtk.StateFlags.SELECTED, selection_color);
+            sections.append (create_text_section ());
             set_margins ();
             connect_signals ();
         }
@@ -80,6 +79,8 @@ namespace Edwin {
                 var color = has_focus ? selection_color : focus_out_color;
                 override_background_color (Gtk.StateFlags.SELECTED, color);
             });
+            (buffer as TextBuffer).section_breaks_deleted.connect (on_section_breaks_deleted);
+            (buffer as TextBuffer).section_break_inserted.connect (on_section_break_inserted);
         }
 
         protected virtual void set_margins () {
@@ -120,9 +121,23 @@ namespace Edwin {
             return false;
         }
         
+        private void on_section_breaks_deleted (uint[] indexes) {
+        
+        }
+        
+        private void on_section_break_inserted (uint n) {
+        
+        }
+        
 /*******************\
 |* PRIVATE METHODS *|
 \*******************/
+
+        private TextSection create_text_section () {
+            var section = TextSection ();
+            section.page_breaks = { };
+            return section;
+        }
 
         private new void scroll_to_mark (Gtk.TextMark mark) {
             Gtk.TextIter iter;
@@ -205,13 +220,11 @@ namespace Edwin {
         }
 
         private void draw_page_breaks (Cairo.Context cr) {
-            Gtk.TextIter start, end, iter;
+            Gtk.TextIter start, end;
             Gdk.Rectangle rect, rect_end, section_rect, tmp_rect;
             var viewport_rect = get_viewport_rectangle ();
-            var win = Gtk.TextWindowType.WIDGET;
-            int text_height = doc.paper_size.text_height;
             int x = doc.paper_size.text_area_start;
-            cr.set_source_rgba (1.0, 1.0, 1.0, 1.0);
+            assert (n_section_breaks + 1 == sections.length ());
             for (uint n = 0; n <= n_section_breaks; n++) {
                 if (n == 0) {
                     buffer.get_start_iter (out start);
@@ -240,35 +253,22 @@ namespace Edwin {
                 }
                 section_rect.height -= section_rect.y;
                 if (to_viewport_coords (section_rect).intersect (viewport_rect, null)) {
-                    int y = rect.y;
-                    int end_y = rect_end.y + (n < n_section_breaks ? 0 : rect_end.height);
-                    int bx, by;
-                    while ((y += text_height) < end_y) {
-                        window_to_buffer_coords (win, x, y, out bx, out by);
-                        get_iter_at_location (out iter, bx, by);
-                        get_location (iter, out rect);
-                        y = rect.y;
-                        cr.save ();
-                        Gdk.cairo_set_source_rgba (cr, Utils.page_border_color ());
-                        cr.set_dash ({3, 4}, 0);
-                        cr.move_to (0, y);
-                        cr.line_to (doc.paper_size.width, y);
-                        cr.stroke ();
-                        cr.restore ();
-                        cr.rectangle (0, y - 1, doc.paper_size.width, 3);
-                        cr.stroke ();
-                    }
-                    if (n < n_section_breaks) {
-                        get_location (end, out rect);
-                        int vskip = y - rect.y - rect.height;
-                        vskip += doc.paper_size.bottom_margin + (3 * doc.paper_size.top_margin) / 2;
-                        if (nth_section_break (n).tag.pixels_below_lines != vskip) {
-                            nth_section_break (n).tag.pixels_below_lines = vskip;
-                        }
-                    } else {
-                        int total_height = y + doc.paper_size.bottom_margin;
-                        if (get_allocated_height () != total_height) {
-                            set_size_request (doc.paper_size.width, total_height);
+                    foreach (int page_break in sections.nth_data (n).page_breaks) {
+                        var pos = page_break >= 0 ? page_break : -page_break;
+                        if (viewport_rect.y <= pos && viewport_rect.y + viewport_rect.height >= pos) {
+                            cr.save ();
+                            var color = page_break < 0 ? Utils.alert_color () : Utils.page_border_color ();
+                            Gdk.cairo_set_source_rgba (cr, color);
+                            cr.set_dash ({3, 4}, 0);
+                            cr.move_to (0, pos);
+                            cr.line_to (doc.paper_size.width, pos);
+                            cr.stroke ();
+                            cr.restore ();
+                            cr.save ();
+                            cr.set_source_rgb (1, 1, 1);
+                            cr.rectangle (0, pos - 1, doc.paper_size.width, 3);
+                            cr.stroke ();
+                            cr.restore ();
                         }
                     }
                 }
@@ -313,6 +313,44 @@ namespace Edwin {
                 scroll_to_cursor_handler = 0;
                 return false;
             });
+        }
+
+        public void compute_page_breaks_for_section (Gtk.TextIter where) {
+            Gtk.TextIter start, end;
+            var n = (buffer as TextBuffer).get_section_bounds (where, out start, out end);
+            int[] page_breaks = { };
+            Gdk.Rectangle rect;
+            get_location (start, out rect);
+            int y_start = rect.y;
+            get_location (end, out rect);
+            int y_end = rect.y + rect.height;
+            int x = doc.paper_size.text_area_start, y = y_start, bx, by;
+            Gtk.TextIter iter;
+            while ((y += doc.paper_size.text_height) < y_end) {
+                window_to_buffer_coords (Gtk.TextWindowType.WIDGET, x, y, out bx, out by);
+                get_iter_at_location (out iter, bx, by);
+                get_location (iter, out rect);
+                y = rect.y;
+                bool over = y <= (page_breaks.length > 0 ? page_breaks[page_breaks.length - 1] : y_start);
+                page_breaks += over ? -y : y;
+                if (over) {
+                    y += rect.height;
+                }
+            }
+            sections.nth_data (n).page_breaks = page_breaks;
+            if (n < n_section_breaks) {
+                /* provide last page with blank space */
+                end.forward_char ();
+                get_location (end, out rect);
+                int vskip = y - rect.y - rect.height;
+                vskip += doc.paper_size.bottom_margin + (3 * doc.paper_size.top_margin) / 2;
+                nth_section_break (n).tag.pixels_below_lines = vskip;
+            } else {
+                int total_height = y + doc.paper_size.bottom_margin;
+                if (get_allocated_height () != total_height) {
+                    set_size_request (doc.paper_size.width, total_height);
+                }
+            }
         }
 
     }

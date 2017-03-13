@@ -68,6 +68,7 @@ namespace Edwin {
         public bool user_action_in_progress { get; private set; default = false; }
         public bool doing_undo_redo { get { return redoable_action_in_progress || redoing_in_progress; } }
         public unowned ToolBar toolbar { get { return main_window.toolbar; } }
+        public unowned TextBuffer buffer { get { return text_view.buffer as TextBuffer; } }
         private bool _check_spelling = false;
         public bool check_spelling {
             get { return _check_spelling; }
@@ -94,18 +95,6 @@ namespace Edwin {
         uint update_toolbar_handler = 0;
         Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
         Queue<UndoOperation?> redo_stack = new Queue<UndoOperation?> ();
-
-        /* often used */
-        private unowned TextBuffer buffer {
-            get { return text_view.buffer as TextBuffer; }
-        }
-        private Gtk.TextIter cursor {
-            get {
-                Gtk.TextIter iter;
-                buffer.get_iter_at_mark (out iter, buffer.get_insert ());
-                return iter;
-            }
-        }
 
 /****************\
 |* CONSTRUCTION *|
@@ -237,8 +226,8 @@ namespace Edwin {
         private void on_paragraph_alignment_selected (Gtk.Justification justification) {
             Gtk.TextIter start, end;
             if (!buffer.get_selection_bounds (out start, out end)) {
-                start = cursor;
-                end = cursor;
+                start = buffer.cursor;
+                end = buffer.cursor;
             }
             buffer.move_to_paragraph_start (ref start);
             buffer.move_to_paragraph_end (ref end);
@@ -370,11 +359,11 @@ namespace Edwin {
                     }
                 }
             } else {
-                attributes = buffer.get_attributes_before (cursor);
+                attributes = buffer.get_attributes_before (buffer.cursor);
                 font_desc = attributes.font;
                 has_underline = attributes.appearance.underline == Pango.Underline.SINGLE;
-                color = buffer.get_text_color (cursor);
-                justification = buffer.get_paragraph_justification (cursor);
+                color = buffer.get_text_color (buffer.cursor);
+                justification = buffer.get_paragraph_justification (buffer.cursor);
             }
             toolbar.set_text_font_desc (font_desc);
             toolbar.set_underline_state (has_underline);

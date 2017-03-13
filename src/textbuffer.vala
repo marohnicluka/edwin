@@ -58,7 +58,15 @@ namespace Edwin {
         
         public uint n_section_breaks { get { return section_breaks.length (); } }
         public bool text_properties_changed { get; set; default = false; }
-        
+        public unowned Document doc { get { return text_view.doc; } }
+        public Gtk.TextIter cursor {
+            get {
+                Gtk.TextIter iter;
+                get_iter_at_mark (out iter, get_insert ());
+                return iter;
+            }
+        }
+                
         List<SectionBreak?> section_breaks = new List<SectionBreak?> ();
         uint section_break_serial = 0;
         int justification_before_insert = 0;
@@ -68,16 +76,8 @@ namespace Edwin {
         bool user_is_deleting = false;
         bool user_is_typing = false;
         
-        private unowned Document doc { get { return text_view.doc; } }
-        private Gtk.TextIter cursor {
-            get {
-                Gtk.TextIter iter;
-                get_iter_at_mark (out iter, get_insert ());
-                return iter;
-            }
-        }
-        
         public signal void section_breaks_deleted (uint[] indexes);
+        public signal void section_break_inserted (uint n);
 
 /****************\
 |* CONSTRUCTION *|
@@ -541,6 +541,7 @@ namespace Edwin {
                 }
             }
             section_breaks.insert (section_break, (int) n);
+            section_break_inserted (n);
             section_break_serial++;
             return n;
         }
@@ -619,7 +620,7 @@ namespace Edwin {
             get_end_iter (out iter);
         }
 
-        public int get_section_bounds (Gtk.TextIter where, out Gtk.TextIter start, out Gtk.TextIter end) {
+        public uint get_section_bounds (Gtk.TextIter where, out Gtk.TextIter start, out Gtk.TextIter end) {
             start = Gtk.TextIter ();
             start.assign (where);
             int index = move_to_section_start (ref start);
@@ -630,7 +631,7 @@ namespace Edwin {
             } else {
                 get_end_iter (out end);
             }
-            return index;
+            return (uint) index;
         }
 
         public bool forward_paragraph (ref Gtk.TextIter iter, bool stop_after_section_break = false) {
