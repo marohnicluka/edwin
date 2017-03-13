@@ -234,7 +234,7 @@ namespace Edwin {
                     end.forward_char ();
                     get_location (end, out tmp_rect);
                     end.backward_char ();
-                    section_rect.height = tmp_rect.y - (3 * doc.paper_size.top_margin) / 2;
+                    section_rect.height = tmp_rect.y - doc.paper_size.top_margin / 2;
                 } else {
                     section_rect.height = get_allocated_height ();
                 }

@@ -65,9 +65,8 @@ namespace Edwin {
         public PaperSize paper_size { get; set; }
         public bool can_undo { get; private set; default = false; }
         public bool can_redo { get; private set; default = false; }
-        public bool text_properties_changed { get; private set; default = false; }
         public bool user_action_in_progress { get; private set; default = false; }
-        public bool doing_undo_redo { get { return !redoable_action_in_progress && !redoing_in_progress; } }
+        public bool doing_undo_redo { get { return redoable_action_in_progress || redoing_in_progress; } }
         public unowned ToolBar toolbar { get { return main_window.toolbar; } }
         private bool _check_spelling = false;
         public bool check_spelling {
@@ -168,7 +167,7 @@ namespace Edwin {
                 buffer.apply_tag (buffer.get_font_family_tag (family), start, end);
                 end_user_action ();
             } else {
-                text_properties_changed = true;
+                buffer.text_properties_changed = true;
             }
         }
 
@@ -180,7 +179,7 @@ namespace Edwin {
                 buffer.apply_tag (buffer.get_text_size_tag (size * Pango.SCALE), start, end);
                 end_user_action ();
             } else {
-                text_properties_changed = true;
+                buffer.text_properties_changed = true;
             }
         }
 
@@ -192,7 +191,7 @@ namespace Edwin {
                 buffer.apply_tag (buffer.get_text_color_tag (color), start, end);
                 end_user_action ();
             } else {
-                text_properties_changed = true;
+                buffer.text_properties_changed = true;
             }
         }
 
@@ -205,7 +204,7 @@ namespace Edwin {
                     buffer.remove_tag (buffer.tag_bold, start, end);
                 }
             } else {
-                text_properties_changed = true;
+                buffer.text_properties_changed = true;
             }
         }
 
@@ -218,7 +217,7 @@ namespace Edwin {
                     buffer.remove_tag (buffer.tag_italic, start, end);
                 }
             } else {
-                text_properties_changed = true;
+                buffer.text_properties_changed = true;
             }
         }
 
@@ -231,7 +230,7 @@ namespace Edwin {
                     buffer.remove_tag (buffer.tag_underline, start, end);
                 }
             } else {
-                text_properties_changed = true;
+                buffer.text_properties_changed = true;
             }
         }
 
@@ -244,7 +243,7 @@ namespace Edwin {
             buffer.move_to_paragraph_start (ref start);
             buffer.move_to_paragraph_end (ref end);
             if (start.equal (end)) {
-                text_properties_changed = true;
+                buffer.text_properties_changed = true;
             } else {
                 begin_user_action ();
                 buffer.apply_alignment_to_range (justification, start, end);
@@ -433,7 +432,7 @@ namespace Edwin {
         }
 
         public void on_text_changed () {
-            if (!redoable_action_in_progress && !redoing_in_progress) {
+            if (!doing_undo_redo) {
                 redo_stack.clear ();
                 redo_buffer.text = "";
                 can_redo = false;
