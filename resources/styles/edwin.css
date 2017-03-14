@@ -4,11 +4,11 @@ EdwinToolBar {
     padding: 12px;
     box-shadow: 0 1px #f7f7f7;
 }
-EdwinToolBarStyleChooser > .button {
+EdwinToolBarParagraphStyleChooser > .button {
     padding: 0 4px 0 4px;
     box-shadow: inset 1px 1px white, 1px 1px white;
 }
-EdwinToolBarSizeChooser > .button {
+EdwinToolBarTextSizeChooser > .button {
     padding: 0 4px 0 6px;
     border-width: 1px 1px 1px 0;
     border-color: #c5c5c5;
@@ -16,7 +16,7 @@ EdwinToolBarSizeChooser > .button {
     background-image: linear-gradient(to bottom, #f0f0f0 0%, #f6f7f8 100%);
     box-shadow: 1px 1px white;
 }
-EdwinToolBarSizeChooser > .entry {
+EdwinToolBarTextSizeChooser > .entry {
     padding: 0 1px 0 6px;
     border-width: 1px 0 1px 1px;
     border-color: #c5c5c5;
@@ -47,7 +47,7 @@ EdwinToolBarButton,
 EdwinToolBarFontButton,
 EdwinToolBarColorChooser,
 EdwinToolBarModeButton > .button,
-EdwinToolBarStyleChooser > .button {
+EdwinToolBarParagraphStyleChooser > .button {
     border-color: #c5c5c5;
     border-left-color: #d2d2d2;
     border-top-color: #d2d2d2;
@@ -56,7 +56,7 @@ EdwinToolBarStyleChooser > .button {
 }
 EdwinToolBarModeButton:insensitive,
 EdwinToolBarModeButton > .button:insensitive,
-EdwinToolBarStyleChooser > .button:insensitive {
+EdwinToolBarParagraphStyleChooser > .button:insensitive {
     color: #a7a7a7;
     border-color: #dfdfdf;
     border-left-color: #e5e5e5;
