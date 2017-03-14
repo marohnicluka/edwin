@@ -193,6 +193,7 @@ namespace Edwin {
             get_iter_at_mark (out pasted_start, pasted_start_mark);
             restore_section_breaks (pasted_start, cursor);
             doc.end_user_action ();
+            text_view.schedule_scroll_to_cursor ();
         }
         
         private void on_mark_set (Gtk.TextIter location, Gtk.TextMark mark) {
@@ -288,7 +289,7 @@ namespace Edwin {
                 doc.end_user_action ();
             }
             cursor_movement_direction = 0;
-            text_view.schedule_scroll_to_cursor ();
+            text_view.scroll_to_cursor ();
             if (!has_selection) {
                 doc.schedule_update_toolbar ();
             }
@@ -322,7 +323,7 @@ namespace Edwin {
             }
             text_view.mark_section_at_iter_dirty (start);
             deletion_in_progress = false;
-            text_view.schedule_scroll_to_cursor ();
+            text_view.scroll_to_cursor ();
         }
 
         private void on_insert_text (ref Gtk.TextIter iter, string text, int len) {
@@ -343,7 +344,7 @@ namespace Edwin {
             }
             insertion_in_progress = false;
             text_properties_changed = false;
-            text_view.schedule_scroll_to_cursor ();
+            text_view.scroll_to_cursor ();
         }
         
         private void on_text_changed () {
