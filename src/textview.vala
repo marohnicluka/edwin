@@ -43,8 +43,6 @@ namespace Edwin {
         public bool supports_page_breaking { get; protected set; default = true; }
         private uint n_section_breaks { get { return (buffer as TextBuffer).n_section_breaks; } }
 
-        Gdk.RGBA selection_color;
-        Gdk.RGBA focus_out_color;
         uint scroll_handler = 0;
         uint scroll_to_cursor_handler = 0;
         List<TextSection?> sections = new List<TextSection?> ();
@@ -58,13 +56,8 @@ namespace Edwin {
             margin = Utils.to_pixels (Utils.INCH, OUTER_MARGIN);
             wrap_mode = Gtk.WrapMode.WORD_CHAR;
             halign = Gtk.Align.CENTER;
-            Gdk.RGBA transparent_color = {0, 0, 0, 0};
-            selection_color = Gdk.RGBA ();
-            selection_color.parse ("#268bd2");
-            focus_out_color = Gdk.RGBA ();
-            focus_out_color.parse ("#d3d7cf");
-            override_background_color (Gtk.StateFlags.NORMAL, transparent_color);
-            override_background_color (Gtk.StateFlags.SELECTED, selection_color);
+            override_background_color (Gtk.StateFlags.NORMAL, Utils.get_color ("transparent"));
+            override_background_color (Gtk.StateFlags.SELECTED, Utils.get_color ("selection"));
             sections.append (create_section ());
             set_margins ();
             connect_signals ();
@@ -84,7 +77,7 @@ namespace Edwin {
             draw.connect (on_draw);
             draw.connect_after (on_draw_after);
             notify["has-focus"].connect (() => {
-                var color = has_focus ? selection_color : focus_out_color;
+                var color = Utils.get_color (has_focus ? "selection" : "selection-unfocused");
                 override_background_color (Gtk.StateFlags.SELECTED, color);
             });
             realize.connect (() => {
@@ -125,7 +118,7 @@ namespace Edwin {
         }
 
         private bool on_draw_after (Cairo.Context cr) {
-            Utils.draw_rectangle (cr, get_bounding_rectangle (), Utils.page_border_color ());
+            Utils.draw_rectangle (cr, get_bounding_rectangle (), Utils.get_color ("page-border"));
             if (supports_page_breaking) {
                 draw_section_breaks (cr);
             }
@@ -249,7 +242,7 @@ namespace Edwin {
                 rect.y += rect.height - (3 * doc.paper_size.top_margin) / 2;
                 rect.width += 2;
                 rect.height = doc.paper_size.top_margin / 2;
-                Gdk.cairo_set_source_rgba (cr, Utils.page_border_color ());
+                Gdk.cairo_set_source_rgba (cr, Utils.get_color ("page-border"));
                 cr.move_to (rect.x, rect.y);
                 cr.rel_line_to (rect.width, 0);
                 cr.move_to (rect.x, rect.y + rect.height);
@@ -271,7 +264,8 @@ namespace Edwin {
                     var pos = y_start + (page_break >= 0 ? page_break : -page_break);
                     rect = {0, pos - 1, doc.paper_size.width, 3};
                     cr.save ();
-                    var color = page_break < 0 ? Utils.alert_color () : Utils.page_border_color ();
+                    var color = page_break < 0 ?
+                        Utils.get_color ("alert") : Utils.get_color ("page-border");
                     Gdk.cairo_set_source_rgba (cr, color);
                     cr.set_dash ({3, 4}, 0);
                     cr.move_to (0, pos);
@@ -279,7 +273,7 @@ namespace Edwin {
                     cr.stroke ();
                     cr.restore ();
                     cr.save ();
-                    cr.set_source_rgb (1, 1, 1);
+                    Gdk.cairo_set_source_rgba (cr, Utils.get_color ("white"));
                     Gdk.cairo_rectangle (cr, rect);
                     cr.stroke ();
                     cr.restore ();

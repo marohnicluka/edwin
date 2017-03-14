@@ -21,6 +21,8 @@
 namespace Edwin {
 
     public class TextBuffer : Gtk.TextBuffer {
+    
+        public const Gtk.TextSearchFlags SEARCH_FLAGS = Gtk.TextSearchFlags.TEXT_ONLY | Gtk.TextSearchFlags.CASE_INSENSITIVE;
 
 /*********************\
 |* STRUCTS AND ENUMS *|
@@ -52,6 +54,7 @@ namespace Edwin {
         public unowned Gtk.TextTag tag_itemize { get; private set; }
         public unowned Gtk.TextTag tag_skip { get; private set; }
         public unowned Gtk.TextTag tag_no_page_break { get; private set; }
+        public unowned Gtk.TextTag tag_highlight { get; private set; }
         public HashTable<string, unowned Gtk.TextTag> font_family_tags { get; private set; }
         public HashTable<int, unowned Gtk.TextTag> text_size_tags { get; private set; }
         public HashTable<Gdk.RGBA?, unowned Gtk.TextTag> text_color_tags { get; private set; }
@@ -69,12 +72,16 @@ namespace Edwin {
                 
         List<SectionBreak?> section_breaks = new List<SectionBreak?> ();
         uint section_break_serial = 0;
+        uint search_handler = 0;
+        int search_matches = 0;
         int justification_before_insert = 0;
         int cursor_movement_direction = 0;
         bool insertion_in_progress = false;
         bool deletion_in_progress = false;
         bool user_is_deleting = false;
         bool user_is_typing = false;
+        
+        public signal void search_finished (int matches);
         
 /****************\
 |* CONSTRUCTION *|
@@ -107,6 +114,8 @@ namespace Edwin {
             /* internal tags */
             tag_skip = create_tag ("internal:skip");
             tag_no_page_break = create_tag ("internal:no-page-break");
+            tag_highlight = create_tag ("internal:highlight",
+                "background-rgba", Utils.get_color ("highlight"));
             font_family_tags = new HashTable<string, unowned Gtk.TextTag> (str_hash, str_equal);
             text_size_tags = new HashTable<int, unowned Gtk.TextTag> (direct_hash, direct_equal);
             text_color_tags = new HashTable<Gdk.RGBA?, unowned Gtk.TextTag> (
@@ -418,7 +427,32 @@ namespace Edwin {
             move_to_paragraph_end (ref iter);
             apply_alignment_to_range (justification_before_insert, start, iter);
         }
-
+        
+        private void search_for_string_in_paragraph (string str, Gtk.TextIter start, Gtk.TextIter end) {
+            Gtk.TextIter match_start, match_end;
+            var iter = start;
+            var limit = iter;
+            move_to_paragraph_end (ref limit);
+            if (limit.compare (end) > 0) {
+                limit.assign (end);
+            }
+            while (iter.forward_search (str, SEARCH_FLAGS, out match_start, out match_end, limit)) {
+                apply_tag (tag_highlight, match_start, match_end);
+                iter.assign (match_end);
+                search_matches++;
+            }
+            if (forward_paragraph (ref iter) && iter.compare (end) < 0) {
+                search_handler = Timeout.add (1, () => {
+                    search_for_string_in_paragraph (str, iter, end);
+                    return false;
+                });
+            } else {
+                search_finished (search_matches);
+                search_matches = 0;
+                search_handler = 0;
+            }
+        }
+        
 /******************\
 |* PUBLIC METHODS *|
 \******************/
@@ -724,6 +758,26 @@ namespace Edwin {
                 }
             });
             return color;
+        }
+        
+        public void clear_search () {
+            if (search_handler != 0) {
+                Source.remove (search_handler);
+                search_handler = 0;
+                search_matches = 0;
+            }
+            Gtk.TextIter start, end;
+            get_bounds (out start, out end);
+            remove_tag (tag_highlight, start, end);
+        }
+
+        public void begin_search_in_range (string str, Gtk.TextIter start, Gtk.TextIter end) {
+            clear_search ();
+            if (str.length == 0) {
+                search_finished (0);
+            } else {
+                search_for_string_in_paragraph (str, start, end);
+            }
         }
 
     }

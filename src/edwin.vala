@@ -87,10 +87,15 @@ namespace Edwin {
         }
         
         public MainWindow? get_last_window () {
-            unowned List<unowned Gtk.Window> windows = get_windows ();
+            unowned List<weak Gtk.Window> windows = get_windows ();
             return windows.length () > 0 ? windows.last ().data as MainWindow : null;
         }
 
+		public unowned MainWindow? get_focused_window () {
+			unowned List<weak Gtk.Window> windows = get_windows ();
+			return windows.length () > 0 ? windows.first ().data as MainWindow : null;
+		}
+        
         public MainWindow new_window () {
             return new MainWindow (this);
         }
@@ -107,10 +112,11 @@ namespace Edwin {
         }
         
         private void set_accelerators () {
-            set_accels_for_action ("win.Quit", {"<Primary>q"});
-            set_accels_for_action ("win.NewDocument", {"<Primary>n"});
-            set_accels_for_action ("win.Undo", {"<Primary>z"});
-            set_accels_for_action ("win.Redo", {"<Primary><Shift>z"});
+            set_accels_for_action ("win.Quit",              {"<Primary>q"});
+            set_accels_for_action ("win.NewDocument",       {"<Primary>n"});
+            set_accels_for_action ("win.Undo",              {"<Primary>z"});
+            set_accels_for_action ("win.Redo",              {"<Primary><Shift>z"});
+            set_accels_for_action ("win.Search",            {"<Primary>f"});
         }
                 
         private void create_unsaved_documents_directory () {

@@ -151,6 +151,7 @@ namespace Edwin {
             toolbar.text_italic_toggled.connect (on_text_italic_toggled);
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
             toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
+            buffer.search_finished.connect (on_search_finished);
             set_defaults ();
         }
         
@@ -243,6 +244,19 @@ namespace Edwin {
                 begin_user_action ();
                 buffer.apply_alignment_to_range (justification, start, end);
                 end_user_action ();
+            }
+        }
+        
+        private void on_search_finished (int n_matches) {
+            Gtk.TextIter iter;
+            buffer.get_start_iter (out iter);
+            if (iter.forward_to_tag_toggle (buffer.tag_highlight)) {
+                if (!buffer.has_selection) {
+                    buffer.place_cursor (iter);
+                    text_view.scroll_to_cursor ();
+                }
+            } else if (main_window.searchbar_entry.text.length > 0) {
+                main_window.searchbar_entry.primary_icon_name = "face-sad-symbolic";
             }
         }
 
@@ -489,6 +503,17 @@ namespace Edwin {
 
         public new void focus () {
             text_view.grab_focus ();
+        }
+        
+        public void search (string str) {
+            Gtk.TextIter start, end;
+            buffer.get_bounds (out start, out end);
+            main_window.searchbar_entry.primary_icon_name = "edit-find-symbolic";
+            buffer.begin_search_in_range (str, start, end);
+        }
+        
+        public void clear_search () {
+            buffer.clear_search ();
         }
 
     }

@@ -27,6 +27,8 @@ namespace Edwin {
         public Gtk.UIManager ui;
         public Granite.Widgets.AppMenu app_menu;
         public Gtk.HeaderBar header_bar;
+        public Gtk.SearchBar searchbar;
+        public Gtk.SearchEntry searchbar_entry;
         public Gtk.ToolButton button_new;
         public Gtk.ToolButton button_open;
         public Gtk.ToolButton button_undo;
@@ -129,12 +131,17 @@ namespace Edwin {
         }
         
         private void init_layout () {
+            searchbar = new Gtk.SearchBar ();
+            searchbar.show_close_button = false;
+            searchbar_entry = new Gtk.SearchEntry ();
+            searchbar.add (searchbar_entry);
             toolbar = new ToolBar (this);
             statusbar = new StatusBar ();
             document = new Document (this);
             var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
             var scrolled = new Gtk.ScrolledWindow (null, null);
             scrolled.add (document);
+            vbox.pack_start (searchbar, false);
             vbox.pack_start (toolbar, false);
             vbox.pack_start (scrolled);
             vbox.pack_start (statusbar, false);
@@ -156,6 +163,19 @@ namespace Edwin {
             document.notify["can-redo"].connect (() => {
                 action_set_enabled ("Redo", document.can_redo);
             });
+            searchbar.notify["search-mode-enabled"].connect (() => {
+                bool active = searchbar.search_mode_enabled;
+                if (!active) {
+                    document.focus ();
+                } else {
+                    searchbar_entry.primary_icon_name = "edit-find-symbolic";
+                }
+                Utils.set_boolean_action_state ("Search", active);
+            });
+            searchbar_entry.search_changed.connect (() => {
+                document.search (searchbar_entry.text);
+            });
+            searchbar_entry.stop_search.connect (document.clear_search);
         }
         
         public SimpleAction get_action (string name) {
@@ -226,13 +246,20 @@ namespace Edwin {
             debug ("Accessing preferences");
         }
         
-        private void change_state_search (SimpleAction action) {
+        private void change_state_search (SimpleAction action, Variant @value) {
             debug ("Change find state");
+            action.set_state (@value);
+            bool active = action.state.get_boolean ();
+            searchbar.search_mode_enabled = active;
+            button_search.active = active;
         }
         
-        private void change_state_check_spelling (SimpleAction action) {
+        private void change_state_check_spelling (SimpleAction action, Variant @value) {
             debug ("Change spellcheck state");
-            document.check_spelling = button_spelling.active;
+            action.set_state (@value);
+            bool active = action.state.get_boolean ();
+            document.check_spelling = active;
+            button_spelling.active = active;
         }
         
         private void change_state_text_bold (SimpleAction action) {

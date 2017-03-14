@@ -33,31 +33,35 @@ namespace Edwin.Utils {
         }
         return 0;
     }
-
-    /**
-     *  Get page border color.
-     */
-    public Gdk.RGBA page_border_color () {
+    
+    public Gdk.RGBA get_color (string id, double alpha = 1.0) {
         var rgba = Gdk.RGBA ();
-        rgba.parse ("#c6c6c6");
-        return rgba;
-    }
-
-    /**
-     *  Get page break color.
-     */
-    public Gdk.RGBA page_break_color () {
-        var rgba = Gdk.RGBA ();
-        rgba.parse ("#dadada");
-        return rgba;
-    }
-
-    /**
-     *  Get page border color.
-     */
-    public Gdk.RGBA alert_color () {
-        var rgba = Gdk.RGBA ();
-        rgba.parse ("#ef2929");
+        switch (id) {
+        case "page-border":
+            rgba.parse ("#c6c6c6");
+            break;
+        case "alert":
+            rgba.parse ("#ef2929");
+            break;
+        case "highlight":
+            rgba.parse ("#fce94f");
+            break;
+        case "selection":
+            rgba.parse ("#268bd2");
+            break;
+        case "selection-unfocused":
+            rgba.parse ("#d3d7cf");
+            break;
+        case "white":
+            rgba.parse ("#ffffff");
+            break;
+        case "transparent":
+            rgba = {0, 0, 0, 0};
+            return rgba;
+        default:
+            assert_not_reached ();
+        }
+        rgba.alpha = alpha;
         return rgba;
     }
 
@@ -158,4 +162,9 @@ namespace Edwin.Utils {
         return button;
     }
     
+	public void set_boolean_action_state (string action_name, bool state) {
+		var action = App.instance.get_focused_window ().get_action (action_name);
+		action.set_state (new Variant.boolean (state));
+	}
+		
 }
