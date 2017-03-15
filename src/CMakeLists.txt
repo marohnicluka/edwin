@@ -14,6 +14,7 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	edwin.vala
 	mainwindow.vala
 	toolbar.vala
+	searchbar.vala
 	statusbar.vala
 	document.vala
 	textbuffer.vala

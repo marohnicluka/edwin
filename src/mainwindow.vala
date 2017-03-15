@@ -27,8 +27,7 @@ namespace Edwin {
         public Gtk.UIManager ui;
         public Granite.Widgets.AppMenu app_menu;
         public Gtk.HeaderBar header_bar;
-        public Gtk.SearchBar searchbar;
-        public Gtk.SearchEntry searchbar_entry;
+        public SearchBar searchbar;
         public Gtk.ToolButton button_new;
         public Gtk.ToolButton button_open;
         public Gtk.ToolButton button_undo;
@@ -131,10 +130,7 @@ namespace Edwin {
         }
         
         private void init_layout () {
-            searchbar = new Gtk.SearchBar ();
-            searchbar.show_close_button = false;
-            searchbar_entry = new Gtk.SearchEntry ();
-            searchbar.add (searchbar_entry);
+            searchbar = new SearchBar ();
             toolbar = new ToolBar (this);
             statusbar = new StatusBar ();
             document = new Document (this);
@@ -168,14 +164,14 @@ namespace Edwin {
                 if (!active) {
                     document.focus ();
                 } else {
-                    searchbar_entry.primary_icon_name = "edit-find-symbolic";
+                    searchbar.not_found = false;
                 }
                 Utils.set_boolean_action_state ("Search", active);
             });
-            searchbar_entry.search_changed.connect (() => {
-                document.search (searchbar_entry.text);
+            searchbar.search_changed.connect (() => {
+                document.search (searchbar.search_text);
             });
-            searchbar_entry.stop_search.connect (document.clear_search);
+            searchbar.stop_search.connect (document.clear_search);
         }
         
         public SimpleAction get_action (string name) {

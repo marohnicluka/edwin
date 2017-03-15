@@ -61,6 +61,8 @@ namespace Edwin {
         
         public uint n_section_breaks { get { return section_breaks.length (); } }
         public bool text_properties_changed { get; set; default = false; }
+        public bool pasting { get; private set; default = false; }
+        public bool can_replace { get; private set; default = false; }
         public unowned Document doc { get { return text_view.doc; } }
         public Gtk.TextIter cursor {
             get {
@@ -195,14 +197,18 @@ namespace Edwin {
         private void on_paste_clipboard () {
             move_mark (pasted_start_mark, cursor);
             doc.begin_user_action ();
+            before_insertion_routine (cursor);
+            pasting = true;
         }
 
         private void on_paste_done (Gtk.Clipboard clipboard) {
-            Gtk.TextIter pasted_start;
-            get_iter_at_mark (out pasted_start, pasted_start_mark);
-            restore_section_breaks (pasted_start, cursor);
+            Gtk.TextIter start;
+            get_iter_at_mark (out start, pasted_start_mark);
+            restore_section_breaks (start, cursor);
+            after_insertion_routine (start, cursor);
             doc.end_user_action ();
-            text_view.schedule_scroll_to_cursor ();
+            pasting = false;
+            text_view.scroll_to_cursor ();
         }
         
         private void on_mark_set (Gtk.TextIter location, Gtk.TextMark mark) {
@@ -213,14 +219,18 @@ namespace Edwin {
         }
 
         private void on_has_selection_changed () {
-            if (!text_view.has_focus && !has_selection) {
-                restore_selection ();
-            } else if (text_view.has_focus && has_selection) {
+            if (!has_selection) {
+                can_replace = false;
+                if (!text_view.has_focus) {
+                    restore_selection ();
+                }
+            } else if (text_view.has_focus) {
                 save_selection ();
             }
         }
 
         private void on_selection_range_changed () {
+            can_replace = false;
             save_selection ();
             doc.schedule_update_toolbar ();
         }
@@ -332,31 +342,29 @@ namespace Edwin {
             }
             text_view.mark_section_at_iter_dirty (start);
             deletion_in_progress = false;
-            text_view.scroll_to_cursor ();
         }
 
         private void on_insert_text (ref Gtk.TextIter iter, string text, int len) {
             move_mark (insert_start_mark, iter);
             insertion_in_progress = true;
-            justification_before_insert = text_properties_changed ?
-                doc.toolbar.get_paragraph_alignment () :
-                get_paragraph_justification (iter);
+            if (!pasting) {
+                before_insertion_routine (iter);
+            }
         }
 
         private void on_insert_text_after (ref Gtk.TextIter end, string text, int len) {
             Gtk.TextIter start;
             get_iter_at_mark (out start, insert_start_mark);
             text_view.mark_section_at_iter_dirty (start);
-            doc.push_undo_operation_insert (start, end);
-            if (!doc.doing_undo_redo) {
-                style_inserted_text (start, end);
-            }
             insertion_in_progress = false;
             text_properties_changed = false;
-            text_view.scroll_to_cursor ();
+            if (!pasting) {
+                after_insertion_routine (start, end);
+            }
         }
         
         private void on_text_changed () {
+            clear_search ();
             doc.on_text_changed ();
         }
 
@@ -392,8 +400,18 @@ namespace Edwin {
         private bool tag_has_id (Gtk.TextTag tag, string id) {
             return tag.name != null && tag.name.has_prefix (id);
         }
+        
+        private void before_insertion_routine (Gtk.TextIter iter) {
+            justification_before_insert = text_properties_changed ?
+                doc.toolbar.get_paragraph_alignment () :
+                get_paragraph_justification (iter);
+        }
 
-        private void style_inserted_text (Gtk.TextIter start, Gtk.TextIter end) {
+        private void after_insertion_routine (Gtk.TextIter start, Gtk.TextIter end) {
+            doc.push_undo_operation_insert (start, end);
+            if (doc.doing_undo_redo) {
+                return;
+            }
             bool modified;
             var attributes = get_attributes_before (start, out modified);
             if (modified || text_properties_changed) {
@@ -442,14 +460,30 @@ namespace Edwin {
                 search_matches++;
             }
             if (forward_paragraph (ref iter) && iter.compare (end) < 0) {
-                search_handler = Timeout.add (1, () => {
+                search_handler = Timeout.add (5, () => {
                     search_for_string_in_paragraph (str, iter, end);
                     return false;
                 });
             } else {
                 search_finished (search_matches);
-                search_matches = 0;
                 search_handler = 0;
+            }
+        }
+        
+        private void remove_tag_undoable (Gtk.TextTag tag, Gtk.TextIter start, Gtk.TextIter end) {
+            var iter = start;
+            var end_iter = Gtk.TextIter ();
+            while (iter.compare (end) < 0) {
+                if (iter.has_tag (tag)) {
+                    end_iter.assign (iter);
+                    end_iter.forward_to_tag_toggle (tag);
+                    if (end_iter.compare (end) > 0) {
+                        end_iter.assign (end);
+                    }
+                    remove_tag (tag, iter, end_iter);
+                } else if (!iter.forward_to_tag_toggle (tag)) {
+                    break;
+                }
             }
         }
         
@@ -500,10 +534,10 @@ namespace Edwin {
             return null;
         }
 
-        public void remove_tags (string id, Gtk.TextIter start, Gtk.TextIter end) {
+        public void remove_tags (string? id, Gtk.TextIter start, Gtk.TextIter end) {
             tag_table.@foreach ((tag) => {
-                if (tag_has_id (tag, id)) {
-                    remove_tag (tag, start, end);
+                if (id == null || tag_has_id (tag, id)) {
+                    remove_tag_undoable (tag, start, end);
                 }
             });
         }
@@ -702,10 +736,11 @@ namespace Edwin {
             if (start.equal (end)) {
                 return;
             }
-            remove_tag (tag_aligned_left, start, end);
-            remove_tag (tag_aligned_right, start, end);
-            remove_tag (tag_centered, start, end);
-            remove_tag (tag_justified, start, end);
+            (unowned Gtk.TextTag)[] alignment_tags =
+                {tag_aligned_left, tag_aligned_right, tag_centered, tag_justified};
+            foreach (var tag in alignment_tags) {
+                remove_tag_undoable (tag, start, end);
+            }
             if (justification >= 0 && justification != text_view.get_default_attributes ().justification) {
                 switch (justification) {
                 case Gtk.Justification.LEFT:
@@ -764,11 +799,15 @@ namespace Edwin {
             if (search_handler != 0) {
                 Source.remove (search_handler);
                 search_handler = 0;
-                search_matches = 0;
             }
-            Gtk.TextIter start, end;
-            get_bounds (out start, out end);
-            remove_tag (tag_highlight, start, end);
+            if (search_matches > 0) {
+                Gtk.TextIter start, end;
+                get_bounds (out start, out end);
+                text_view.doc.begin_not_undoable_action ();
+                remove_tag (tag_highlight, start, end);
+                text_view.doc.end_not_undoable_action ();
+            }
+            search_matches = 0;
         }
 
         public void begin_search_in_range (string str, Gtk.TextIter start, Gtk.TextIter end) {
@@ -776,8 +815,57 @@ namespace Edwin {
             if (str.length == 0) {
                 search_finished (0);
             } else {
+                text_view.doc.begin_not_undoable_action ();
                 search_for_string_in_paragraph (str, start, end);
             }
+        }
+        
+        public bool select_first_highlight_after_cursor (out bool has_next = null) {
+            var iter = cursor;
+            var start = Gtk.TextIter ();
+            bool start_found = false;
+            bool end_found = false;
+            has_next = false;
+            while (iter.forward_to_tag_toggle (tag_highlight)) {
+                if (end_found) {
+                    has_next = true;
+                    break;
+                }
+                if (start_found && iter.ends_tag (tag_highlight)) {
+                    select_range (start, iter);
+                    end_found = true;
+                    can_replace = true;
+                }
+                if (iter.begins_tag (tag_highlight)) {
+                    start.assign (iter);
+                    start_found = true;
+                }
+            }
+            return start_found && end_found;
+        }
+
+        public bool select_first_highlight_before_cursor (out bool has_prev = null) {
+            var iter = cursor;
+            var end = Gtk.TextIter ();
+            bool start_found = true;
+            bool end_found = false;
+            has_prev = false;
+            while (iter.backward_to_tag_toggle (tag_highlight)) {
+                if (start_found) {
+                    has_prev = true;
+                    break;
+                }
+                if (end_found && iter.begins_tag (tag_highlight)) {
+                    select_range (iter, end);
+                    start_found = true;
+                    can_replace = true;
+                }
+                if (iter.ends_tag (tag_highlight)) {
+                    end.assign (iter);
+                    end_found = true;
+                }
+            }
+            return start_found && end_found;
         }
 
     }

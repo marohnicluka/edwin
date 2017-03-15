@@ -73,3 +73,14 @@ link_directories(${DEPS_LIBRARY_DIRS} ${LIBSOURCE_LIBRARY_DIRS} ${GCONF_LIBRARY_
 # Some include paths
 include_directories(${CMAKE_BINARY_DIR}/src)
 
+# Install
+
+install(
+	FILES ${CMAKE_SOURCE_DIR}/resources/icons/48/edwin.png
+	DESTINATION ${DATADIR}/icons/hicolor/48x48/apps
+)
+install(
+	FILES ${CMAKE_SOURCE_DIR}/resources/icons/64/edwin.png
+	DESTINATION ${DATADIR}/icons/hicolor/64x64/apps
+)
+

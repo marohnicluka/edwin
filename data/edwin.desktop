@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=Edwin
-GenericName=Edwin
-Comment=Simple document writer for elementary OS
-Categories=GTK;Publishing
+GenericName=Editor
+Comment=Write text documents
+Categories=Office
 Exec=edwin
-Icon=accessories-text-editor
+Icon=edwin
 Terminal=false
 Type=Application

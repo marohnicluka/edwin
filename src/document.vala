@@ -91,6 +91,7 @@ namespace Edwin {
         GtkSpell.Checker spell_checker;
         bool redoing_in_progress = false;
         bool redoable_action_in_progress = false;
+        bool not_undoable_action_in_progress = false;
         uint undo_operation_counter = 0;
         uint update_toolbar_handler = 0;
         Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
@@ -152,6 +153,8 @@ namespace Edwin {
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
             toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
             buffer.search_finished.connect (on_search_finished);
+            main_window.searchbar.next_match.connect (on_next_match);
+            main_window.searchbar.prev_match.connect (on_prev_match);
             set_defaults ();
         }
         
@@ -248,15 +251,30 @@ namespace Edwin {
         }
         
         private void on_search_finished (int n_matches) {
+            end_not_undoable_action ();
             Gtk.TextIter iter;
             buffer.get_start_iter (out iter);
-            if (iter.forward_to_tag_toggle (buffer.tag_highlight)) {
-                if (!buffer.has_selection) {
-                    buffer.place_cursor (iter);
-                    text_view.scroll_to_cursor ();
-                }
-            } else if (main_window.searchbar_entry.text.length > 0) {
-                main_window.searchbar_entry.primary_icon_name = "face-sad-symbolic";
+            buffer.place_cursor (iter);
+            bool has_next;
+            main_window.searchbar.set_has_prev_match (false);
+            if (buffer.select_first_highlight_after_cursor (out has_next)) {
+                main_window.searchbar.set_has_next_match (has_next);
+            } else {
+                main_window.searchbar.not_found = true;
+            }
+        }
+        
+        private void on_next_match () {
+            bool has_next;
+            if (buffer.select_first_highlight_after_cursor (out has_next)) {
+                main_window.searchbar.set_has_next_match (has_next);
+            }
+        }
+
+        private void on_prev_match () {
+            bool has_prev;
+            if (buffer.select_first_highlight_before_cursor (out has_prev)) {
+                main_window.searchbar.set_has_prev_match (has_prev);
             }
         }
 
@@ -412,11 +430,17 @@ namespace Edwin {
         }
 
         public void push_undo_operation_insert (Gtk.TextIter start, Gtk.TextIter end) {
+            if (not_undoable_action_in_progress) {
+                return;
+            }
             var op = create_undo_operation (UndoOperationType.INSERT, start, end);
             push_undo_operation (op);
         }
 
         public void push_undo_operation_delete (Gtk.TextIter start, Gtk.TextIter end) {
+            if (not_undoable_action_in_progress) {
+                return;
+            }
             Gtk.TextIter chunk_start, chunk_end;
             var chunk_buffer = redoable_action_in_progress ? redo_buffer : undo_buffer;
             chunk_buffer.get_end_iter (out chunk_end);
@@ -432,6 +456,9 @@ namespace Edwin {
         }
 
         public void push_undo_operation_tag (Gtk.TextIter start, Gtk.TextIter end, Gtk.TextTag tag, bool tag_applied) {
+            if (not_undoable_action_in_progress) {
+                return;
+            }
             var op = create_undo_operation (UndoOperationType.TAG, start, end);
             op.tag = tag;
             op.tag_applied = tag_applied;
@@ -450,7 +477,7 @@ namespace Edwin {
         }
 
         public void on_text_changed () {
-            if (!doing_undo_redo) {
+            if (!doing_undo_redo && redo_stack.length > 0) {
                 redo_stack.clear ();
                 redo_buffer.text = "";
                 can_redo = false;
@@ -465,6 +492,14 @@ namespace Edwin {
         public void end_user_action () {
             user_action_in_progress = false;
             undo_operation_counter = 0;
+        }
+        
+        public void begin_not_undoable_action () {
+            not_undoable_action_in_progress = true;
+        }
+
+        public void end_not_undoable_action () {
+            not_undoable_action_in_progress = false;
         }
 
         public void undo () {
@@ -508,7 +543,7 @@ namespace Edwin {
         public void search (string str) {
             Gtk.TextIter start, end;
             buffer.get_bounds (out start, out end);
-            main_window.searchbar_entry.primary_icon_name = "edit-find-symbolic";
+            main_window.searchbar.not_found = false;
             buffer.begin_search_in_range (str, start, end);
         }
         
