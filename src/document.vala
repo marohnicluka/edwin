@@ -68,6 +68,7 @@ namespace Edwin {
         public bool user_action_in_progress { get; private set; default = false; }
         public bool doing_undo_redo { get { return redoable_action_in_progress || redoing_in_progress; } }
         public unowned ToolBar toolbar { get { return main_window.toolbar; } }
+        public unowned SearchBar searchbar { get { return main_window.searchbar; } }
         public unowned TextBuffer buffer { get { return text_view.buffer as TextBuffer; } }
         private bool _check_spelling = false;
         public bool check_spelling {
@@ -91,7 +92,6 @@ namespace Edwin {
         GtkSpell.Checker spell_checker;
         bool redoing_in_progress = false;
         bool redoable_action_in_progress = false;
-        bool not_undoable_action_in_progress = false;
         uint undo_operation_counter = 0;
         uint update_toolbar_handler = 0;
         Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
@@ -153,16 +153,27 @@ namespace Edwin {
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
             toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
             buffer.search_finished.connect (on_search_finished);
-            main_window.searchbar.next_match.connect (on_next_match);
-            main_window.searchbar.prev_match.connect (on_prev_match);
+            searchbar.next_match.connect (on_next_match);
+            searchbar.prev_match.connect (on_prev_match);
+            searchbar.replace.connect (on_replace);
+            searchbar.replace_all.connect (on_replace_all);
+            text_view.notify["has-focus"].connect (on_has_focus_changed);
             set_defaults ();
+        }
+        
+        private void on_has_focus_changed () {
+            if (text_view.has_focus) {
+                on_focused ();
+            } else {
+                on_unfocused ();
+            }
         }
         
         private void on_font_family_selected (string family) {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
                 begin_user_action ();
-                buffer.remove_tags ("font-family", start, end);
+                buffer.remove_tags ("edwin-font-family", start, end);
                 buffer.apply_tag (buffer.get_font_family_tag (family), start, end);
                 end_user_action ();
             } else {
@@ -174,7 +185,7 @@ namespace Edwin {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
                 begin_user_action ();
-                buffer.remove_tags ("text-size", start, end);
+                buffer.remove_tags ("edwin-text-size", start, end);
                 buffer.apply_tag (buffer.get_text_size_tag (size * Pango.SCALE), start, end);
                 end_user_action ();
             } else {
@@ -186,7 +197,7 @@ namespace Edwin {
             Gtk.TextIter start, end;
             if (buffer.get_selection_bounds (out start, out end)) {
                 begin_user_action ();
-                buffer.remove_tags ("text-color", start, end);
+                buffer.remove_tags ("edwin-text-color", start, end);
                 buffer.apply_tag (buffer.get_text_color_tag (color), start, end);
                 end_user_action ();
             } else {
@@ -251,36 +262,62 @@ namespace Edwin {
         }
         
         private void on_search_finished (int n_matches) {
-            end_not_undoable_action ();
-            Gtk.TextIter iter;
-            buffer.get_start_iter (out iter);
-            buffer.place_cursor (iter);
-            bool has_next;
-            main_window.searchbar.set_has_prev_match (false);
-            if (buffer.select_first_highlight_after_cursor (out has_next)) {
-                main_window.searchbar.set_has_next_match (has_next);
-            } else {
-                main_window.searchbar.not_found = true;
+            searchbar.not_found = n_matches == 0;
+            if (n_matches > 0) {
+                searchbar.set_has_prev_match (false);
+                searchbar.set_has_next_match (buffer.select_first_search_match ());
             }
         }
         
         private void on_next_match () {
+            buffer.unfocus_current_search_match ();
             bool has_next;
-            if (buffer.select_first_highlight_after_cursor (out has_next)) {
-                main_window.searchbar.set_has_next_match (has_next);
-            }
+            assert (buffer.select_next_search_match (out has_next));
+            searchbar.enable_navigation (has_next, true);
         }
 
         private void on_prev_match () {
+            buffer.unfocus_current_search_match ();
             bool has_prev;
-            if (buffer.select_first_highlight_before_cursor (out has_prev)) {
-                main_window.searchbar.set_has_prev_match (has_prev);
+            assert (buffer.select_prev_search_match (out has_prev));
+            searchbar.enable_navigation (true, has_prev);
+        }
+        
+        private void on_replace () {
+            begin_user_action ();
+            var replacement = searchbar.replacement_text;
+            bool has_next, has_prev;
+            searchbar.get_navigation_enabled (out has_next, out has_prev);
+            if (!buffer.replace_current_search_match (replacement, ref has_next, ref has_prev)) {
+                clear_search ();   
+            } else {
+                searchbar.enable_navigation (has_next, has_prev);
             }
+            end_user_action ();
+        }
+        
+        private void on_replace_all () {
+            begin_user_action ();
+            var replacement = searchbar.replacement_text;
+            buffer.replace_all_search_matches (replacement);
+            clear_search ();
+            end_user_action ();
         }
 
 /*******************\
 |* PRIVATE METHODS *|
 \*******************/
+
+        private void on_focused () {
+            if (searchbar.search_mode_enabled) {
+                clear_search ();
+                searchbar.search_mode_enabled = false;
+            }
+        }
+        
+        private void on_unfocused () {
+        
+        }
 
         private UndoOperation create_undo_operation (int type, Gtk.TextIter iter1, Gtk.TextIter iter2) {
             var op = UndoOperation ();
@@ -353,17 +390,17 @@ namespace Edwin {
                 color = buffer.get_text_color (start);
                 justification = buffer.get_paragraph_justification (start);
                 var iter = start;
-                buffer.move_to_tag_toggle (ref iter, true, "font-family");
+                buffer.move_to_tag_toggle (ref iter, true, "edwin-font-family");
                 if (iter.compare (end) < 0) {
                     font_desc.set_family ("");
                 }
                 iter.assign (start);
-                buffer.move_to_tag_toggle (ref iter, true, "text-size");
+                buffer.move_to_tag_toggle (ref iter, true, "edwin-text-size");
                 if (iter.compare (end) < 0) {
                     font_desc.set_size (0);
                 }
                 iter.assign (start);
-                buffer.move_to_tag_toggle (ref iter, true, "text-color");
+                buffer.move_to_tag_toggle (ref iter, true, "edwin-text-color");
                 if (iter.compare (end) < 0) {
                     color.alpha = 0;
                 }
@@ -430,17 +467,11 @@ namespace Edwin {
         }
 
         public void push_undo_operation_insert (Gtk.TextIter start, Gtk.TextIter end) {
-            if (not_undoable_action_in_progress) {
-                return;
-            }
             var op = create_undo_operation (UndoOperationType.INSERT, start, end);
             push_undo_operation (op);
         }
 
         public void push_undo_operation_delete (Gtk.TextIter start, Gtk.TextIter end) {
-            if (not_undoable_action_in_progress) {
-                return;
-            }
             Gtk.TextIter chunk_start, chunk_end;
             var chunk_buffer = redoable_action_in_progress ? redo_buffer : undo_buffer;
             chunk_buffer.get_end_iter (out chunk_end);
@@ -448,7 +479,7 @@ namespace Edwin {
             chunk_buffer.insert_range (ref chunk_end, start, end);
             chunk_buffer.get_bounds (out chunk_start, out chunk_end);
             buffer.tag_table.@foreach ((tag) => {
-                if (tag.name != null && tag.name.has_prefix ("gtkspell")) {
+                if (tag.name != null && buffer.tag_is_internal (tag)) {
                     chunk_buffer.remove_tag (tag, chunk_start, chunk_end);
                 }
             });
@@ -456,9 +487,6 @@ namespace Edwin {
         }
 
         public void push_undo_operation_tag (Gtk.TextIter start, Gtk.TextIter end, Gtk.TextTag tag, bool tag_applied) {
-            if (not_undoable_action_in_progress) {
-                return;
-            }
             var op = create_undo_operation (UndoOperationType.TAG, start, end);
             op.tag = tag;
             op.tag_applied = tag_applied;
@@ -482,6 +510,7 @@ namespace Edwin {
                 redo_buffer.text = "";
                 can_redo = false;
             }
+            text_view.break_pages ();
         }
         
         public void begin_user_action () {
@@ -494,14 +523,6 @@ namespace Edwin {
             undo_operation_counter = 0;
         }
         
-        public void begin_not_undoable_action () {
-            not_undoable_action_in_progress = true;
-        }
-
-        public void end_not_undoable_action () {
-            not_undoable_action_in_progress = false;
-        }
-
         public void undo () {
             if (!can_undo) {
                 return;
@@ -540,15 +561,17 @@ namespace Edwin {
             text_view.grab_focus ();
         }
         
-        public void search (string str) {
+        public void search () {
             Gtk.TextIter start, end;
             buffer.get_bounds (out start, out end);
-            main_window.searchbar.not_found = false;
-            buffer.begin_search_in_range (str, start, end);
+            buffer.begin_search_in_range (searchbar.search_text, start, end);
         }
         
         public void clear_search () {
             buffer.clear_search ();
+            searchbar.enable_navigation (false, false);
+            searchbar.not_found = true;
+            
         }
 
     }

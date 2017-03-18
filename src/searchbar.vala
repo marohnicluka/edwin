@@ -24,8 +24,8 @@ namespace Edwin {
 
         Gtk.SearchEntry search_entry = new Gtk.SearchEntry ();
         Gtk.Entry replace_entry = new Gtk.Entry ();
-        Gtk.Button button_next_match = new Gtk.Button.from_icon_name ("go-next");
-        Gtk.Button button_prev_match = new Gtk.Button.from_icon_name ("go-previous");
+        Gtk.Button button_next_match = new Gtk.Button.from_icon_name ("go-down");
+        Gtk.Button button_prev_match = new Gtk.Button.from_icon_name ("go-up");
         Gtk.Button button_replace = new Gtk.Button.with_label (_("Replace"));
         Gtk.Button button_replace_all = new Gtk.Button.with_label (_("Replace all"));
         
@@ -39,14 +39,20 @@ namespace Edwin {
                 } else {
                     search_entry.primary_icon_name = _not_found ? "face-sad-symbolic" : "edit-find-symbolic";
                 }
-                button_next_match.sensitive = !_not_found;
-                button_prev_match.sensitive = !_not_found;
+                if (_not_found) {
+                    button_next_match.sensitive = false;
+                    button_prev_match.sensitive = false;
+                }
                 button_replace.sensitive = !_not_found;
                 button_replace_all.sensitive = !_not_found;
             }
         }
         public string search_text {
             get { return search_entry.text; }
+            set { search_entry.text = @value; }
+        }
+        public string replacement_text {
+            get { return replace_entry.text; }
         }
         
         public signal void search_changed ();
@@ -109,6 +115,16 @@ namespace Edwin {
         
         public void set_has_prev_match (bool has_prev) {
             button_prev_match.sensitive = has_prev;
+        }
+        
+        public void get_navigation_enabled (out bool has_next, out bool has_prev) {
+            has_next = button_next_match.sensitive;
+            has_prev = button_prev_match.sensitive;
+        }
+        
+        public void enable_navigation (bool has_next, bool has_prev) {
+            set_has_next_match (has_next);
+            set_has_prev_match (has_prev);
         }
         
     }

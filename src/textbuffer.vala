@@ -54,7 +54,8 @@ namespace Edwin {
         public unowned Gtk.TextTag tag_itemize { get; private set; }
         public unowned Gtk.TextTag tag_skip { get; private set; }
         public unowned Gtk.TextTag tag_no_page_break { get; private set; }
-        public unowned Gtk.TextTag tag_highlight { get; private set; }
+        public unowned Gtk.TextTag tag_search_match { get; private set; }
+        public unowned Gtk.TextTag tag_search_match_focused { get; private set; }
         public HashTable<string, unowned Gtk.TextTag> font_family_tags { get; private set; }
         public HashTable<int, unowned Gtk.TextTag> text_size_tags { get; private set; }
         public HashTable<Gdk.RGBA?, unowned Gtk.TextTag> text_color_tags { get; private set; }
@@ -73,9 +74,10 @@ namespace Edwin {
         }
                 
         List<SectionBreak?> section_breaks = new List<SectionBreak?> ();
+        Gtk.TextIter search_match_iter = Gtk.TextIter ();
         uint section_break_serial = 0;
         uint search_handler = 0;
-        int search_matches = 0;
+        int n_search_matches = 0;
         int justification_before_insert = 0;
         int cursor_movement_direction = 0;
         bool insertion_in_progress = false;
@@ -97,27 +99,29 @@ namespace Edwin {
         
         private void create_tags_and_marks () {
             /* tags */
-            tag_bold = create_tag ("bold",
+            tag_bold = create_tag ("edwin-bold",
                 "weight", Pango.Weight.BOLD);
-            tag_italic = create_tag ("italic",
+            tag_italic = create_tag ("edwin-italic",
                 "style", Pango.Style.ITALIC);
-            tag_underline = create_tag ("underline",
+            tag_underline = create_tag ("edwin-underline",
                 "underline", Pango.Underline.SINGLE);
-            tag_aligned_left = create_tag ("aligned-left",
+            tag_aligned_left = create_tag ("edwin-aligned-left",
                 "justification", Gtk.Justification.LEFT);
-            tag_aligned_right = create_tag ("aligned-right",
+            tag_aligned_right = create_tag ("edwin-aligned-right",
                 "justification", Gtk.Justification.RIGHT);
-            tag_centered = create_tag ("centered",
+            tag_centered = create_tag ("edwin-centered",
                 "justification", Gtk.Justification.CENTER);
-            tag_justified = create_tag ("justified",
+            tag_justified = create_tag ("edwin-justified",
                 "justification", Gtk.Justification.FILL);
-            tag_enumerate = create_tag ("enumerate");
-            tag_itemize = create_tag ("itemize");
+            tag_enumerate = create_tag ("edwin-enumerate");
+            tag_itemize = create_tag ("edwin-itemize");
             /* internal tags */
-            tag_skip = create_tag ("internal:skip");
-            tag_no_page_break = create_tag ("internal:no-page-break");
-            tag_highlight = create_tag ("internal:highlight",
+            tag_skip = create_tag ("edwin-internal:skip");
+            tag_no_page_break = create_tag ("edwin-internal:no-page-break");
+            tag_search_match = create_tag ("edwin-internal:search-match",
                 "background-rgba", Utils.get_color ("highlight"));
+            tag_search_match_focused = create_tag ("edwin-internal:search-match-focused",
+                "background-rgba", Utils.get_color ("selection-unfocused"));
             font_family_tags = new HashTable<string, unowned Gtk.TextTag> (str_hash, str_equal);
             text_size_tags = new HashTable<int, unowned Gtk.TextTag> (direct_hash, direct_equal);
             text_color_tags = new HashTable<Gdk.RGBA?, unowned Gtk.TextTag> (
@@ -181,14 +185,14 @@ namespace Edwin {
         }
 
         private void on_apply_tag (Gtk.TextTag tag, Gtk.TextIter start, Gtk.TextIter end) {
-            if (tag.name == null || !tag.name.has_prefix ("gtkspell")) {
+            if (!tag_is_internal (tag)) {
                 doc.push_undo_operation_tag (start, end, tag, true);
             }
             doc.on_text_changed ();
         }
 
         private void on_remove_tag (Gtk.TextTag tag, Gtk.TextIter start, Gtk.TextIter end) {
-            if (tag.name == null || !tag.name.has_prefix ("gtkspell")) {
+            if (!tag_is_internal (tag)) {
                 doc.push_undo_operation_tag (start, end, tag, false);
             }
             doc.on_text_changed ();
@@ -308,7 +312,9 @@ namespace Edwin {
                 doc.end_user_action ();
             }
             cursor_movement_direction = 0;
-            text_view.scroll_to_cursor ();
+            if (text_view.has_focus) {
+                text_view.scroll_to_cursor ();
+            }
             if (!has_selection) {
                 doc.schedule_update_toolbar ();
             }
@@ -328,7 +334,7 @@ namespace Edwin {
         private void on_delete_range_after (Gtk.TextIter start, Gtk.TextIter end) {
             uint[] deleted_section_breaks = { };
             start.get_marks ().@foreach ((mark) => {
-                if (mark.name != null && mark.name.has_prefix ("section-break")) {
+                if (mark.name != null && mark.name.has_prefix ("edwin-section-break")) {
                     var serial = (uint) int.parse (mark.name.substring (14));
                     var n = get_section_break_index_from_serial (serial);
                     section_breaks.remove (section_breaks.nth_data (n));
@@ -340,8 +346,8 @@ namespace Edwin {
                 debug ("Deleted %d section breaks", deleted_section_breaks.length);
                 text_view.remove_sections (deleted_section_breaks);
             }
-            text_view.mark_section_at_iter_dirty (start);
             deletion_in_progress = false;
+            text_view.mark_section_at_iter_dirty (start);
         }
 
         private void on_insert_text (ref Gtk.TextIter iter, string text, int len) {
@@ -356,18 +362,17 @@ namespace Edwin {
             Gtk.TextIter start;
             get_iter_at_mark (out start, insert_start_mark);
             text_view.mark_section_at_iter_dirty (start);
-            insertion_in_progress = false;
-            text_properties_changed = false;
             if (!pasting) {
                 after_insertion_routine (start, end);
             }
+            insertion_in_progress = false;
+            text_properties_changed = false;
         }
         
         private void on_text_changed () {
-            clear_search ();
             doc.on_text_changed ();
         }
-
+        
 /*******************\
 |* PRIVATE METHODS *|
 \*******************/
@@ -397,8 +402,15 @@ namespace Edwin {
             select_range (start, end);
         }
         
-        private bool tag_has_id (Gtk.TextTag tag, string id) {
-            return tag.name != null && tag.name.has_prefix (id);
+        private bool tag_has_id (Gtk.TextTag tag, string ids) {
+            if (tag.name != null) {
+                foreach (var id in ids.split (",")) {
+                    if (tag.name.has_prefix (id.strip ())) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
         
         private void before_insertion_routine (Gtk.TextIter iter) {
@@ -428,9 +440,9 @@ namespace Edwin {
                 bool has_underline_tag = text_properties_changed ?
                     doc.toolbar.get_underline_state () :
                     attributes.appearance.underline == Pango.Underline.SINGLE;
-                apply_tag_with_id (family_tag, "font-family", start, end);
-                apply_tag_with_id (size_tag, "text-size", start, end);
-                apply_tag_with_id (color_tag, "text-color", start, end);
+                apply_tag_with_id (family_tag, "edwin-font-family", start, end);
+                apply_tag_with_id (size_tag, "edwin-text-size", start, end);
+                apply_tag_with_id (color_tag, "edwin-text-color", start, end);
                 if (has_bold_tag) {
                     apply_tag (tag_bold, start, end);
                 }
@@ -455,9 +467,9 @@ namespace Edwin {
                 limit.assign (end);
             }
             while (iter.forward_search (str, SEARCH_FLAGS, out match_start, out match_end, limit)) {
-                apply_tag (tag_highlight, match_start, match_end);
+                apply_tag (tag_search_match, match_start, match_end);
                 iter.assign (match_end);
-                search_matches++;
+                n_search_matches++;
             }
             if (forward_paragraph (ref iter) && iter.compare (end) < 0) {
                 search_handler = Timeout.add (5, () => {
@@ -465,7 +477,7 @@ namespace Edwin {
                     return false;
                 });
             } else {
-                search_finished (search_matches);
+                search_finished (n_search_matches);
                 search_handler = 0;
             }
         }
@@ -487,14 +499,30 @@ namespace Edwin {
             }
         }
         
+        private void replace_search_match (ref Gtk.TextIter match_start, string replacement) {
+            var iter = match_start;
+            iter.forward_to_tag_toggle (tag_search_match);
+            insert_text (ref iter, replacement, -1);
+            if (!iter.ends_tag (tag_search_match)) {
+                iter.backward_to_tag_toggle (tag_search_match);
+            }
+            match_start.assign (iter);
+            match_start.backward_to_tag_toggle (tag_search_match);
+            @delete (ref match_start, ref iter);
+        }
+        
 /******************\
 |* PUBLIC METHODS *|
 \******************/
 
+        public bool tag_is_internal (Gtk.TextTag tag) {
+            return tag_has_id (tag, "gtkspell,edwin-internal");
+        }
+
         public unowned Gtk.TextTag get_font_family_tag (string family) {
             unowned Gtk.TextTag? tag = font_family_tags.lookup (family);
             if (tag == null) {
-                tag = create_tag (@"font-family:$family",
+                tag = create_tag (@"edwin-font-family:$family",
                     "family", family);
                 font_family_tags.insert (family, tag);
             }
@@ -504,7 +532,7 @@ namespace Edwin {
         public unowned Gtk.TextTag get_text_size_tag (int size) {
             unowned Gtk.TextTag? tag = text_size_tags.lookup (size);
             if (tag == null) {
-                tag = create_tag (@"text-size:%d".printf (size / Pango.SCALE),
+                tag = create_tag (@"edwin-text-size:%d".printf (size / Pango.SCALE),
                     "size", size);
                 text_size_tags.insert (size, tag);
             }
@@ -514,7 +542,7 @@ namespace Edwin {
         public unowned Gtk.TextTag get_text_color_tag (Gdk.RGBA color) {
             unowned Gtk.TextTag? tag = text_color_tags.lookup (color);
             if (tag == null) {
-                tag = create_tag (@"text-color:%s".printf (color.to_string ()),
+                tag = create_tag (@"edwin-text-color:%s".printf (color.to_string ()),
                     "foreground-rgba", color);
                 text_color_tags.insert (color, tag);
             }
@@ -594,7 +622,7 @@ namespace Edwin {
         }
 
         public uint create_section_break (Gtk.TextIter iter) {
-            string name = "section-break:%u".printf (section_break_serial);
+            string name = "edwin-section-break:%u".printf (section_break_serial);
             var section_break = SectionBreak () {
                 serial = section_break_serial,
                 mark = create_mark (name, iter, true),
@@ -621,7 +649,7 @@ namespace Edwin {
         
         public bool iter_at_section_break (Gtk.TextIter iter) {
             foreach (var mark in iter.get_marks ()) {
-                if (mark.name != null && mark.name.has_prefix ("section-break")) {
+                if (mark.name != null && mark.name.has_prefix ("edwin-section-break")) {
                     return true;
                 }
             }
@@ -632,13 +660,13 @@ namespace Edwin {
             var iter = start;
             int count = 0;
             while (
-                move_to_tag_toggle (ref iter, true, "section-break", -1) &&
+                move_to_tag_toggle (ref iter, true, "edwin-section-break", -1) &&
                 iter.compare (end) < 0)
             {
                 var n = create_section_break (iter);
                 var next_iter = iter;
                 next_iter.forward_char ();
-                remove_tags ("section-break", iter, next_iter);
+                remove_tags ("edwin-section-break", iter, next_iter);
                 apply_tag (section_breaks.nth_data (n).tag, iter, next_iter);
                 iter.forward_char ();
                 count++;
@@ -718,7 +746,7 @@ namespace Edwin {
         public void get_styled_paragraph_bounds (Gtk.TextIter where, out Gtk.TextIter start, out Gtk.TextIter end) {
             start = where;
             end = where;
-            var tag = get_tag_at_iter (where, "paragraph-style");
+            var tag = get_tag_at_iter (where, "edwin-paragraph-style");
             if (tag == null) {
                 move_to_paragraph_start (ref start);
                 move_to_paragraph_end (ref end);
@@ -800,14 +828,13 @@ namespace Edwin {
                 Source.remove (search_handler);
                 search_handler = 0;
             }
-            if (search_matches > 0) {
+            if (n_search_matches > 0) {
                 Gtk.TextIter start, end;
                 get_bounds (out start, out end);
-                text_view.doc.begin_not_undoable_action ();
-                remove_tag (tag_highlight, start, end);
-                text_view.doc.end_not_undoable_action ();
+                remove_tag (tag_search_match, start, end);
+                remove_tag (tag_search_match_focused, start, end);
             }
-            search_matches = 0;
+            n_search_matches = 0;
         }
 
         public void begin_search_in_range (string str, Gtk.TextIter start, Gtk.TextIter end) {
@@ -815,28 +842,55 @@ namespace Edwin {
             if (str.length == 0) {
                 search_finished (0);
             } else {
-                text_view.doc.begin_not_undoable_action ();
                 search_for_string_in_paragraph (str, start, end);
             }
         }
         
-        public bool select_first_highlight_after_cursor (out bool has_next = null) {
-            var iter = cursor;
+        public bool select_first_search_match ()
+            requires (n_search_matches > 0)
+        {
+            Gtk.TextIter iter;
+            var end = Gtk.TextIter ();
+            get_start_iter (out iter);
+            if (!iter.has_tag (tag_search_match)) {
+                assert (iter.forward_to_tag_toggle (tag_search_match));
+            }
+            end.assign (iter);
+            end.forward_to_tag_toggle (tag_search_match);
+            apply_tag (tag_search_match_focused, iter, end);
+            search_match_iter.assign (iter);
+            text_view.scroll_to_iter (iter);
+            iter.assign (end);
+            return iter.forward_to_tag_toggle (tag_search_match);
+        }
+        
+        public void unfocus_current_search_match ()
+            requires (search_match_selected ())
+        {
+            var iter = search_match_iter;
+            iter.forward_to_tag_toggle (tag_search_match_focused);
+            remove_tag (tag_search_match_focused, search_match_iter, iter);
+        }
+        
+        public bool select_next_search_match (out bool has_next) {
+            var iter = search_match_iter;
             var start = Gtk.TextIter ();
             bool start_found = false;
             bool end_found = false;
             has_next = false;
-            while (iter.forward_to_tag_toggle (tag_highlight)) {
+            while (iter.forward_to_tag_toggle (tag_search_match)) {
                 if (end_found) {
                     has_next = true;
-                    break;
+                    return true;
                 }
-                if (start_found && iter.ends_tag (tag_highlight)) {
-                    select_range (start, iter);
+                if (start_found && iter.ends_tag (tag_search_match)) {
+                    apply_tag (tag_search_match_focused, start, iter);
+                    search_match_iter.assign (start);
+                    text_view.scroll_to_iter (search_match_iter);
                     end_found = true;
                     can_replace = true;
                 }
-                if (iter.begins_tag (tag_highlight)) {
+                if (iter.begins_tag (tag_search_match)) {
                     start.assign (iter);
                     start_found = true;
                 }
@@ -844,28 +898,52 @@ namespace Edwin {
             return start_found && end_found;
         }
 
-        public bool select_first_highlight_before_cursor (out bool has_prev = null) {
-            var iter = cursor;
+        public bool select_prev_search_match (out bool has_prev) {
+            var iter = search_match_iter;
             var end = Gtk.TextIter ();
-            bool start_found = true;
+            bool start_found = false;
             bool end_found = false;
             has_prev = false;
-            while (iter.backward_to_tag_toggle (tag_highlight)) {
+            while (iter.backward_to_tag_toggle (tag_search_match)) {
                 if (start_found) {
                     has_prev = true;
-                    break;
+                    return true;
                 }
-                if (end_found && iter.begins_tag (tag_highlight)) {
-                    select_range (iter, end);
+                if (end_found && iter.begins_tag (tag_search_match)) {
+                    apply_tag (tag_search_match_focused, iter, end);
+                    search_match_iter.assign (iter);
+                    text_view.scroll_to_iter (search_match_iter);
                     start_found = true;
                     can_replace = true;
                 }
-                if (iter.ends_tag (tag_highlight)) {
+                if (iter.ends_tag (tag_search_match)) {
                     end.assign (iter);
                     end_found = true;
                 }
             }
             return start_found && end_found;
+        }
+        
+        public bool search_match_selected () {
+            return n_search_matches > 0 && search_match_iter.has_tag (tag_search_match_focused);
+        }
+        
+        public bool replace_current_search_match (string replacement, ref bool has_next, ref bool has_prev)
+            requires (search_match_selected ())
+        {
+            replace_search_match (ref search_match_iter, replacement);
+            return select_next_search_match (out has_next) || select_prev_search_match (out has_prev);
+        }
+
+        public void replace_all_search_matches (string replacement) {
+            Gtk.TextIter iter;
+            get_start_iter (out iter);
+            while (true) {
+                if (!iter.has_tag (tag_search_match) && !iter.forward_to_tag_toggle (tag_search_match)) {
+                    return;
+                }
+                replace_search_match (ref iter, replacement);
+            }
         }
 
     }

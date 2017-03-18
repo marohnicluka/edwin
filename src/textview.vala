@@ -20,7 +20,7 @@
 
 namespace Edwin {
 
-    public const int PAGE_BREAKING_TIMEOUT = 150; // miliseconds
+    public const int PAGE_BREAKING_TIMEOUT = 50; // miliseconds
     public const int SCROLL_TIMEOUT = 5; // miliseconds
     public const int SCROLL_DURATION = 100; // miliseconds
 
@@ -45,6 +45,7 @@ namespace Edwin {
 
         uint scroll_handler = 0;
         uint scroll_to_cursor_handler = 0;
+        uint page_breaking_handler = 0;
         List<TextSection?> sections = new List<TextSection?> ();
 
 /****************\
@@ -111,7 +112,6 @@ namespace Edwin {
         private bool on_draw (Cairo.Context cr) {
             Utils.fill_white_rectangle (cr, get_bounding_rectangle ());
             if (supports_page_breaking) {
-                break_pages ();
                 draw_page_breaks (cr);
             }
             return false;
@@ -124,7 +124,7 @@ namespace Edwin {
             }
             return false;
         }
-
+        
 /*******************\
 |* PRIVATE METHODS *|
 \*******************/
@@ -134,33 +134,6 @@ namespace Edwin {
             section.page_breaks = { };
             section.dirty = true;
             return section;
-        }
-
-        private new void scroll_to_mark (Gtk.TextMark mark) {
-            Gtk.TextIter iter;
-            Gdk.Rectangle rect;
-            int dx, dy;
-            buffer.get_iter_at_mark (out iter, mark);
-            get_location (iter, out rect);
-            get_distance_from_viewport (rect, out dx, out dy);
-            if (dx != 0 || dy != 0) {
-                if (scroll_handler != 0) {
-                    Source.remove (scroll_handler);
-                }
-                var dx_step = SCROLL_TIMEOUT * dx / (double) SCROLL_DURATION;
-                var dy_step = SCROLL_TIMEOUT * dy / (double) SCROLL_DURATION;
-                int i = 0;
-                scroll_handler = Timeout.add (SCROLL_TIMEOUT, () => {
-                    doc.hadjustment.@value += dx_step;
-                    doc.vadjustment.@value += dy_step;
-                    if (i < SCROLL_DURATION / SCROLL_TIMEOUT) {
-                        i++;
-                        return true;
-                    }
-                    scroll_handler = 0;
-                    return false;
-                });
-            }
         }
 
         private unowned TextBuffer.SectionBreak nth_section_break (uint n) {
@@ -343,8 +316,33 @@ namespace Edwin {
             };
         }
 
+        public new void scroll_to_iter (Gtk.TextIter iter) {
+            Gdk.Rectangle rect;
+            int dx, dy;
+            get_location (iter, out rect);
+            get_distance_from_viewport (rect, out dx, out dy);
+            if (dx != 0 || dy != 0) {
+                if (scroll_handler != 0) {
+                    Source.remove (scroll_handler);
+                }
+                var dx_step = SCROLL_TIMEOUT * dx / (double) SCROLL_DURATION;
+                var dy_step = SCROLL_TIMEOUT * dy / (double) SCROLL_DURATION;
+                int i = 0;
+                scroll_handler = Timeout.add (SCROLL_TIMEOUT, () => {
+                    doc.hadjustment.@value += dx_step;
+                    doc.vadjustment.@value += dy_step;
+                    if (i < SCROLL_DURATION / SCROLL_TIMEOUT) {
+                        i++;
+                        return true;
+                    }
+                    scroll_handler = 0;
+                    return false;
+                });
+            }
+        }
+
         public void scroll_to_cursor () {
-            scroll_to_mark (buffer.get_insert ());
+            scroll_to_iter ((buffer as TextBuffer).cursor);
         }
         
         public void schedule_scroll_to_cursor () {
@@ -359,10 +357,17 @@ namespace Edwin {
         }
 
         public void mark_section_dirty (uint n) {
+            if (!supports_page_breaking) {
+                return;
+            }
             sections.nth_data (n).dirty = true;
+            schedule_page_breaking ();
         }
 
         public void mark_section_at_iter_dirty (Gtk.TextIter iter) {
+            if (!supports_page_breaking) {
+                return;
+            }
             Gtk.TextIter start, end;
             for (uint n = 0; n < sections.length (); n++) {
                 get_section_bounds (n, out start, out end);
@@ -371,6 +376,7 @@ namespace Edwin {
                     break;
                 }
             }
+            schedule_page_breaking ();
         }
         
         public void break_pages () {
@@ -383,8 +389,21 @@ namespace Edwin {
             }
             if (page_breaks_changed) {
                 update_height ();
-                schedule_scroll_to_cursor ();
+                if (has_focus) {
+                    schedule_scroll_to_cursor ();
+                }
             }
+        }
+        
+        public void schedule_page_breaking () {
+            if (page_breaking_handler != 0) {
+                Source.remove (page_breaking_handler);
+            }
+            page_breaking_handler = Timeout.add (PAGE_BREAKING_TIMEOUT, () => {
+                break_pages ();
+                page_breaking_handler = 0;
+                return false;
+            });
         }
 
     }

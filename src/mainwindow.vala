@@ -164,13 +164,15 @@ namespace Edwin {
                 if (!active) {
                     document.focus ();
                 } else {
-                    searchbar.not_found = false;
+                    searchbar.not_found = true;
+                    Gtk.TextIter start, end;
+                    if (document.buffer.get_selection_bounds (out start, out end)) {
+                        searchbar.search_text = start.get_text (end);
+                    }
                 }
                 Utils.set_boolean_action_state ("Search", active);
             });
-            searchbar.search_changed.connect (() => {
-                document.search (searchbar.search_text);
-            });
+            searchbar.search_changed.connect (document.search);
             searchbar.stop_search.connect (document.clear_search);
         }
         
