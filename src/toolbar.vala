@@ -186,8 +186,6 @@ namespace Edwin {
             }
         }
         
-        unowned MainWindow main_window;
-        
         /* text toolbar */
         ParagraphStyleChooser paragraph_style_chooser;
         FontButton text_font_chooser;
@@ -235,8 +233,7 @@ namespace Edwin {
         public signal void list_type_selected (TextListType type);
         public signal void return_focus_to_document ();
         
-        public ToolBar (MainWindow main_window) {
-            this.main_window = main_window;
+        public ToolBar () {
             create_layout ();
             connect_signals ();
         }

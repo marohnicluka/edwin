@@ -932,7 +932,14 @@ namespace Edwin {
             requires (search_match_selected ())
         {
             replace_search_match (ref search_match_iter, replacement);
-            return select_next_search_match (out has_next) || select_prev_search_match (out has_prev);
+            if (has_next) {
+                select_next_search_match (out has_next);
+            } else if (has_prev) {
+                select_prev_search_match (out has_prev);
+            } else {
+                return false;
+            }
+            return true;
         }
 
         public void replace_all_search_matches (string replacement) {

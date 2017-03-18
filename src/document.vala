@@ -96,6 +96,8 @@ namespace Edwin {
         uint update_toolbar_handler = 0;
         Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
         Queue<UndoOperation?> redo_stack = new Queue<UndoOperation?> ();
+        
+        public signal void cursor_location_pages_changed (int current_page, int n_pages);
 
 /****************\
 |* CONSTRUCTION *|
@@ -153,11 +155,10 @@ namespace Edwin {
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
             toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
             buffer.search_finished.connect (on_search_finished);
-            searchbar.next_match.connect (on_next_match);
-            searchbar.prev_match.connect (on_prev_match);
-            searchbar.replace.connect (on_replace);
-            searchbar.replace_all.connect (on_replace_all);
             text_view.notify["has-focus"].connect (on_has_focus_changed);
+            text_view.notify["n-pages"].connect (emit_cursor_location_pages);
+            text_view.notify["current-page-number"].connect (emit_cursor_location_pages);
+            text_view.notify["overwrite"].connect (on_overwrite_changed);
             set_defaults ();
         }
         
@@ -167,6 +168,10 @@ namespace Edwin {
             } else {
                 on_unfocused ();
             }
+        }
+        
+        private void on_overwrite_changed () {
+            main_window.statusbar.update_input_type_label (text_view.overwrite);
         }
         
         private void on_font_family_selected (string family) {
@@ -264,54 +269,22 @@ namespace Edwin {
         private void on_search_finished (int n_matches) {
             searchbar.not_found = n_matches == 0;
             if (n_matches > 0) {
-                searchbar.set_has_prev_match (false);
-                searchbar.set_has_next_match (buffer.select_first_search_match ());
+                searchbar.enable_navigation (buffer.select_first_search_match (), false);
             }
         }
         
-        private void on_next_match () {
-            buffer.unfocus_current_search_match ();
-            bool has_next;
-            assert (buffer.select_next_search_match (out has_next));
-            searchbar.enable_navigation (has_next, true);
-        }
-
-        private void on_prev_match () {
-            buffer.unfocus_current_search_match ();
-            bool has_prev;
-            assert (buffer.select_prev_search_match (out has_prev));
-            searchbar.enable_navigation (true, has_prev);
-        }
-        
-        private void on_replace () {
-            begin_user_action ();
-            var replacement = searchbar.replacement_text;
-            bool has_next, has_prev;
-            searchbar.get_navigation_enabled (out has_next, out has_prev);
-            if (!buffer.replace_current_search_match (replacement, ref has_next, ref has_prev)) {
-                clear_search ();   
-            } else {
-                searchbar.enable_navigation (has_next, has_prev);
-            }
-            end_user_action ();
-        }
-        
-        private void on_replace_all () {
-            begin_user_action ();
-            var replacement = searchbar.replacement_text;
-            buffer.replace_all_search_matches (replacement);
-            clear_search ();
-            end_user_action ();
-        }
-
 /*******************\
 |* PRIVATE METHODS *|
 \*******************/
 
+        private void emit_cursor_location_pages () {
+            cursor_location_pages_changed (text_view.current_page_number, text_view.n_pages);
+        }
+        
         private void on_focused () {
             if (searchbar.search_mode_enabled) {
                 clear_search ();
-                searchbar.search_mode_enabled = false;
+                searchbar.search_text = "";
             }
         }
         
@@ -451,6 +424,10 @@ namespace Edwin {
             toolbar.set_text_font_desc (attributes.font);
             toolbar.set_text_color (text_view.default_text_color);
             toolbar.set_paragraph_alignment (attributes.justification);
+            main_window.statusbar.update_input_type_label (text_view.overwrite);
+            Gtk.TextIter iter;
+            buffer.get_start_iter (out iter);
+            buffer.place_cursor (iter);
         }
 
 /******************\
@@ -572,6 +549,41 @@ namespace Edwin {
             searchbar.enable_navigation (false, false);
             searchbar.not_found = true;
             
+        }
+
+        public void next_match () {
+            buffer.unfocus_current_search_match ();
+            bool has_next;
+            assert (buffer.select_next_search_match (out has_next));
+            searchbar.enable_navigation (has_next, true);
+        }
+
+        public void prev_match () {
+            buffer.unfocus_current_search_match ();
+            bool has_prev;
+            assert (buffer.select_prev_search_match (out has_prev));
+            searchbar.enable_navigation (true, has_prev);
+        }
+        
+        public void replace () {
+            begin_user_action ();
+            var replacement = searchbar.replacement_text;
+            bool has_next, has_prev;
+            searchbar.get_navigation_enabled (out has_next, out has_prev);
+            if (!buffer.replace_current_search_match (replacement, ref has_next, ref has_prev)) {
+                clear_search ();   
+            } else {
+                searchbar.enable_navigation (has_next, has_prev);
+            }
+            end_user_action ();
+        }
+        
+        public void replace_all () {
+            begin_user_action ();
+            var replacement = searchbar.replacement_text;
+            buffer.replace_all_search_matches (replacement);
+            clear_search ();
+            end_user_action ();
         }
 
     }

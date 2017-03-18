@@ -41,6 +41,9 @@ namespace Edwin {
         public Gdk.RGBA default_text_color { get { return get_style_context ().get_color (0); } }
         public unowned Document doc { get; construct set; }
         public bool supports_page_breaking { get; protected set; default = true; }
+        public int n_pages { get; private set; }
+        public int current_page_number { get; private set; default = -1; }
+        
         private uint n_section_breaks { get { return (buffer as TextBuffer).n_section_breaks; } }
 
         uint scroll_handler = 0;
@@ -81,9 +84,9 @@ namespace Edwin {
                 var color = Utils.get_color (has_focus ? "selection" : "selection-unfocused");
                 override_background_color (Gtk.StateFlags.SELECTED, color);
             });
+            buffer.notify["cursor-position"].connect (on_cursor_position_changed);
             realize.connect (() => {
-                Gtk.TextIter iter;
-                buffer.get_start_iter (out iter);
+                break_pages ();
             });
         }
 
@@ -123,6 +126,15 @@ namespace Edwin {
                 draw_section_breaks (cr);
             }
             return false;
+        }
+        
+        private void on_cursor_position_changed () {
+            if (supports_page_breaking) {
+                var n = get_page_num_at_iter ((buffer as TextBuffer).cursor);
+                if (n != current_page_number) {
+                    current_page_number = n;
+                }
+            }
         }
         
 /*******************\
@@ -381,12 +393,15 @@ namespace Edwin {
         
         public void break_pages () {
             bool page_breaks_changed = false;
+            int np = 0;
             for (uint n = 0; n < sections.length (); n++) {
                 if (sections.nth_data (n).dirty) {
                     compute_page_breaks (n);
                     page_breaks_changed = true;
                 }
+                np += sections.nth_data (n).page_breaks.length + 1;
             }
+            n_pages = np;
             if (page_breaks_changed) {
                 update_height ();
                 if (has_focus) {
@@ -404,6 +419,31 @@ namespace Edwin {
                 page_breaking_handler = 0;
                 return false;
             });
+        }
+        
+        public int get_page_num_at_iter (Gtk.TextIter iter) {
+            Gdk.Rectangle rect;
+            get_location (iter, out rect);
+            int y = rect.y;
+            int np = 0;
+            Gtk.TextIter start, end;
+            for (uint n = 0; n < sections.length (); n++) {
+                get_section_bounds (n, out start, out end);
+                var page_breaks = sections.nth_data (n).page_breaks;
+                if (iter.compare (start) >= 0 && iter.compare (end) <= 0) {
+                    get_location (start, out rect);
+                    int y_rel = y - rect.y;
+                    foreach (int page_break in page_breaks) {
+                        if (page_break > y_rel) {
+                            break;
+                        }
+                        np++;
+                    }
+                    break;
+                }
+                np += page_breaks.length + 1;
+            }
+            return np;
         }
 
     }

@@ -48,7 +48,7 @@ namespace Edwin {
             set_application (this.app);
             this.title = this.app.app_cmd_name;
             this.window_position = Gtk.WindowPosition.CENTER;
-            this.set_size_request (1100, 700);
+            this.set_size_request (1130, 700);
             this.hide_titlebar_when_maximized = false;
             this.icon_name = "accessories-text-editor";
             init_stylesheet ();
@@ -130,8 +130,8 @@ namespace Edwin {
         }
         
         private void init_layout () {
-            searchbar = new SearchBar ();
-            toolbar = new ToolBar (this);
+            searchbar = new SearchBar (win_actions);
+            toolbar = new ToolBar ();
             statusbar = new StatusBar ();
             document = new Document (this);
             var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
@@ -159,18 +159,25 @@ namespace Edwin {
             document.notify["can-redo"].connect (() => {
                 action_set_enabled ("Redo", document.can_redo);
             });
+            document.cursor_location_pages_changed.connect ((n, total) => {
+                //debug ("Cursor moved to page %d of %d", n, total);
+                statusbar.update_location_pages (n + 1, total);
+            });
             searchbar.notify["search-mode-enabled"].connect (() => {
                 bool active = searchbar.search_mode_enabled;
                 if (!active) {
                     document.focus ();
                 } else {
                     searchbar.not_found = true;
-                    Gtk.TextIter start, end;
-                    if (document.buffer.get_selection_bounds (out start, out end)) {
-                        searchbar.search_text = start.get_text (end);
-                    }
+                    searchbar.focus ();
                 }
                 Utils.set_boolean_action_state ("Search", active);
+            });
+            searchbar.focused.connect (() => {
+                Gtk.TextIter start, end;
+                if (document.buffer.get_selection_bounds (out start, out end)) {
+                    searchbar.search_text = start.get_text (end);
+                }
             });
             searchbar.search_changed.connect (document.search);
             searchbar.stop_search.connect (document.clear_search);
@@ -244,6 +251,35 @@ namespace Edwin {
             debug ("Accessing preferences");
         }
         
+        private void action_next_match () {
+            debug ("Fetch next search match");
+            document.next_match ();
+        }
+        
+        private void action_prev_match () {
+            debug ("Fetch previous search match");
+            document.prev_match ();
+        }
+        
+        private void action_replace () {
+            debug ("Replace current search match");
+            document.replace ();
+        }
+        
+        private void action_replace_all () {
+            debug ("Replace all search matches");
+            document.replace_all ();
+        }
+        
+        private void action_find () {
+            debug ("Find text");
+            if (searchbar.search_mode_enabled) {
+                searchbar.focus ();
+            } else {
+                searchbar.search_mode_enabled = true;
+            }
+        }
+        
         private void change_state_search (SimpleAction action, Variant @value) {
             debug ("Change find state");
             action.set_state (@value);
@@ -283,6 +319,11 @@ namespace Edwin {
             {"PageSetup", action_page_setup},
             {"DocumentProperties", action_document_properties},
             {"Preferences", action_preferences},
+            {"Find", action_find},
+            {"NextMatch", action_next_match},
+            {"PreviousMatch", action_prev_match},
+            {"Replace", action_replace},
+            {"ReplaceAll", action_replace_all},
             /* toggles */
             {"Search", null, null, "false", change_state_search},
             {"CheckSpelling", null, null, "false", change_state_check_spelling},

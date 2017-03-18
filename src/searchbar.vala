@@ -21,7 +21,8 @@
 namespace Edwin {
 
     public class SearchBar : Gtk.SearchBar {
-
+    
+        unowned SimpleActionGroup win_actions;
         Gtk.SearchEntry search_entry = new Gtk.SearchEntry ();
         Gtk.Entry replace_entry = new Gtk.Entry ();
         Gtk.Button button_next_match = new Gtk.Button.from_icon_name ("go-down");
@@ -40,11 +41,12 @@ namespace Edwin {
                     search_entry.primary_icon_name = _not_found ? "face-sad-symbolic" : "edit-find-symbolic";
                 }
                 if (_not_found) {
-                    button_next_match.sensitive = false;
-                    button_prev_match.sensitive = false;
+                    enable_navigation (false, false);
                 }
-                button_replace.sensitive = !_not_found;
-                button_replace_all.sensitive = !_not_found;
+                var action_replace = win_actions.lookup_action ("Replace") as SimpleAction;
+                var action_replace_all = win_actions.lookup_action ("ReplaceAll") as SimpleAction;
+                action_replace.set_enabled (!_not_found);
+                action_replace_all.set_enabled (!_not_found);
             }
         }
         public string search_text {
@@ -57,12 +59,10 @@ namespace Edwin {
         
         public signal void search_changed ();
         public signal void stop_search ();
-        public signal void next_match ();
-        public signal void prev_match ();
-        public signal void replace ();
-        public signal void replace_all ();
+        public signal void focused ();
 
-        public SearchBar () {
+        public SearchBar (SimpleActionGroup win_actions) {
+            this.win_actions = win_actions;
             show_close_button = false;
             replace_entry.placeholder_text = _("Replace with");
             button_next_match.relief = Gtk.ReliefStyle.NONE;
@@ -73,6 +73,10 @@ namespace Edwin {
             button_prev_match.can_focus = false;
             button_replace.can_focus = false;
             button_replace_all.can_focus = false;
+            button_next_match.set_action_name ("win.NextMatch");
+            button_prev_match.set_action_name ("win.PreviousMatch");
+            button_replace.set_action_name ("win.Replace");
+            button_replace_all.set_action_name ("win.ReplaceAll");
             var separator = new Gtk.SeparatorToolItem ();
             separator.draw = false;
             var hbox = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
@@ -95,36 +99,42 @@ namespace Edwin {
             search_entry.stop_search.connect (() => {
                 stop_search ();
             });
-            button_next_match.clicked.connect (() => {
-                next_match ();
+            search_entry.grab_focus.connect (() => {
+                focused ();
             });
-            button_prev_match.clicked.connect (() => {
-                prev_match ();
-            });
-            button_replace.clicked.connect (() => {
-                replace ();
-            });
-            button_replace_all.clicked.connect (() => {
-                replace_all ();
+            search_entry.key_press_event.connect (on_key_press_event);
+            replace_entry.key_press_event.connect (on_key_press_event);
+            replace_entry.activate.connect (() => {
+                button_replace.clicked ();
             });
         }
         
-        public void set_has_next_match (bool has_next) {
-            button_next_match.sensitive = has_next;
-        }
-        
-        public void set_has_prev_match (bool has_prev) {
-            button_prev_match.sensitive = has_prev;
+        private bool on_key_press_event (Gdk.EventKey event) {
+            switch (event.keyval) {
+            case Gdk.Key.Down:
+                button_next_match.clicked ();
+                return true;
+            case Gdk.Key.Up:
+                button_prev_match.clicked ();
+                return true;
+            }
+            return false;
         }
         
         public void get_navigation_enabled (out bool has_next, out bool has_prev) {
-            has_next = button_next_match.sensitive;
-            has_prev = button_prev_match.sensitive;
+            has_next = win_actions.get_action_enabled ("NextMatch");
+            has_prev = win_actions.get_action_enabled ("PreviousMatch");
         }
         
         public void enable_navigation (bool has_next, bool has_prev) {
-            set_has_next_match (has_next);
-            set_has_prev_match (has_prev);
+            var action_next = win_actions.lookup_action ("NextMatch") as SimpleAction;
+            var action_prev = win_actions.lookup_action ("PreviousMatch") as SimpleAction;
+            action_next.set_enabled (has_next);
+            action_prev.set_enabled (has_prev);
+        }
+        
+        public new void focus () {
+            search_entry.grab_focus ();
         }
         
     }

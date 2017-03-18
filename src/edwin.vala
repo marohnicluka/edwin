@@ -116,7 +116,11 @@ namespace Edwin {
             set_accels_for_action ("win.NewDocument",       {"<Primary>n"});
             set_accels_for_action ("win.Undo",              {"<Primary>z"});
             set_accels_for_action ("win.Redo",              {"<Primary><Shift>z"});
-            set_accels_for_action ("win.Search",            {"<Primary>f"});
+            set_accels_for_action ("win.Find",              {"<Primary>f"});
+            set_accels_for_action ("win.NextMatch",         {"<Primary>g"});
+            set_accels_for_action ("win.PreviousMatch",     {"<Primary><Shift>g"});
+            set_accels_for_action ("win.Replace",           {"<Primary>r"});
+            set_accels_for_action ("win.ReplaceAll",        {"<Primary><Shift>r"});
         }
                 
         private void create_unsaved_documents_directory () {
