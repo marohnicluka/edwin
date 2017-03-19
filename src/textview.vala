@@ -75,6 +75,12 @@ namespace Edwin {
             if (scroll_handler != 0) {
                 Source.remove (scroll_handler);
             }
+            if (scroll_to_cursor_handler != 0) {
+                Source.remove (scroll_to_cursor_handler);
+            }
+            if (page_breaking_handler != 0) {
+                Source.remove (page_breaking_handler);
+            }
         }
 
         private void connect_signals () {
@@ -88,6 +94,7 @@ namespace Edwin {
             realize.connect (() => {
                 break_pages ();
             });
+            doc.notify["zoom"].connect (on_zoom_changed);
         }
 
         protected virtual void set_margins () {
@@ -111,6 +118,10 @@ namespace Edwin {
 /*************\
 |* CALLBACKS *|
 \*************/
+
+        private void on_zoom_changed () {
+        
+        }
 
         private bool on_draw (Cairo.Context cr) {
             Utils.fill_white_rectangle (cr, get_bounding_rectangle ());

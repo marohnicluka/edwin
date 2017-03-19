@@ -63,6 +63,7 @@ namespace Edwin {
 
         /* public properties */
         public PaperSize paper_size { get; set; }
+        public double zoom { get; set; default = 1.0; }
         public bool can_undo { get; private set; default = false; }
         public bool can_redo { get; private set; default = false; }
         public bool user_action_in_progress { get; private set; default = false; }
@@ -70,7 +71,7 @@ namespace Edwin {
         public unowned ToolBar toolbar { get { return main_window.toolbar; } }
         public unowned SearchBar searchbar { get { return main_window.searchbar; } }
         public unowned TextBuffer buffer { get { return text_view.buffer as TextBuffer; } }
-        private bool _check_spelling = false;
+        bool _check_spelling = false;
         public bool check_spelling {
             get { return _check_spelling; }
             set {
@@ -79,6 +80,17 @@ namespace Edwin {
                     spell_checker.attach (text_view);
                 } else {
                     spell_checker.detach ();
+                }
+            }
+        }
+        public unowned string language {
+            get { return spell_checker.get_language (); }
+            set {
+                try {
+                    spell_checker.set_language (value);
+                    main_window.statusbar.set_language_label (value);
+                } catch (Error e) {
+                    warning (e.message);
                 }
             }
         }
@@ -131,12 +143,7 @@ namespace Edwin {
         
         private void create_spell_checker () {
             spell_checker = new GtkSpell.Checker ();
-            try {
-                spell_checker.set_language (Environment.get_variable ("LANG"));
-                spell_checker.decode_language_codes = true;
-            } catch (Error e) {
-                warning (e.message);
-            }
+            spell_checker.decode_language_codes = true;
         }
 
 /*************\
@@ -158,8 +165,12 @@ namespace Edwin {
             text_view.notify["has-focus"].connect (on_has_focus_changed);
             text_view.notify["n-pages"].connect (emit_cursor_location_pages);
             text_view.notify["current-page-number"].connect (emit_cursor_location_pages);
-            text_view.notify["overwrite"].connect (on_overwrite_changed);
+            spell_checker.language_changed.connect (on_language_changed);
             set_defaults ();
+        }
+        
+        private void on_language_changed (string new_lang) {
+            main_window.statusbar.set_language_label (new_lang);
         }
         
         private void on_has_focus_changed () {
@@ -168,10 +179,6 @@ namespace Edwin {
             } else {
                 on_unfocused ();
             }
-        }
-        
-        private void on_overwrite_changed () {
-            main_window.statusbar.update_input_type_label (text_view.overwrite);
         }
         
         private void on_font_family_selected (string family) {
@@ -420,11 +427,11 @@ namespace Edwin {
         }
 
         private void set_defaults () {
+            language = Environment.get_variable ("LANG");
             var attributes = text_view.get_default_attributes ();
             toolbar.set_text_font_desc (attributes.font);
             toolbar.set_text_color (text_view.default_text_color);
             toolbar.set_paragraph_alignment (attributes.justification);
-            main_window.statusbar.update_input_type_label (text_view.overwrite);
             Gtk.TextIter iter;
             buffer.get_start_iter (out iter);
             buffer.place_cursor (iter);

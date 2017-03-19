@@ -22,7 +22,9 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	papersize.vala
 	paragraphstyle.vala
 	styletemplates.vala
+	listchooser.vala
 	fontfamilychooser.vala
+	languagechooser.vala
 	settings.vala
 	utils.vala
 PACKAGES

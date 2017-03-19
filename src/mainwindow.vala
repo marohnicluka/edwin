@@ -181,6 +181,9 @@ namespace Edwin {
             });
             searchbar.search_changed.connect (document.search);
             searchbar.stop_search.connect (document.clear_search);
+            statusbar.language_changed.connect ((lang) => {
+                document.language = lang;
+            });
         }
         
         public SimpleAction get_action (string name) {

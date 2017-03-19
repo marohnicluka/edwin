@@ -22,8 +22,23 @@ namespace Edwin {
 
 	public class StatusBar : Gtk.Statusbar {
 	
+		public class MenuButton : Gtk.MenuButton {
+		    
+		    public MenuButton () {
+		        can_focus = false;
+		        relief = Gtk.ReliefStyle.NONE;
+		        set_image (new Gtk.Image.from_icon_name ("pan-down-symbolic", Gtk.IconSize.BUTTON));
+		        always_show_image = true;
+		        image_position = Gtk.PositionType.RIGHT;
+            }
+        
+        }
+        
+	    LanguageChooser language_chooser;
 	    Gtk.Label location_pages_label;
-	    Gtk.Label input_type_label;
+	    MenuButton language_button;
+	    
+	    public signal void language_changed (string lang);
 	
 		public StatusBar () {
 			can_focus = false;
@@ -32,17 +47,38 @@ namespace Edwin {
 			var msg_area = this.get_message_area ();
 			msg_area.margin_top = 2;
 			msg_area.margin_bottom = 2;
-			location_pages_label = create_label ();
-			input_type_label = create_label (4);
+			location_pages_label = create_label (16);
+			language_button = new MenuButton ();
+			pack_start (create_separator (), false);
+			pack_start (create_frame (language_button), false);
 			pack_start (create_separator (), false);
 			pack_start (create_frame (location_pages_label), false);
 			pack_start (create_separator (), false);
-			pack_start (create_frame (input_type_label), false);
+			connect_signals ();
+		}
+		
+		private void connect_signals () {
+		    language_button.realize.connect (() => {
+			    language_chooser = new LanguageChooser (language_button);
+			    language_button.popover = language_chooser;
+		        language_chooser.activated.connect (() => {
+		            var lang = language_chooser.get_selected ();
+		            language_changed (lang);
+		            language_chooser.hide ();
+		        });
+		    });
+		    language_button.toggled.connect (() => {
+		        if (language_button.active) {
+    		        language_chooser.show ();
+		        } else {
+		            language_chooser.hide ();
+		        }
+		    });
 		}
 		
 		private Gtk.Widget create_frame (Gtk.Widget widget) {
 		    var frame = new Gtk.Frame (null);
-		    Utils.apply_stylesheet (frame, "* { padding: 0 20px 0 20px; }");
+		    //Utils.apply_stylesheet (frame, "* { padding: 0 20px 0 20px; }");
 		    frame.add (widget);
 		    return frame;
 		}
@@ -53,21 +89,6 @@ namespace Edwin {
 		    return sep;
 		}
 		
-		/*
-		private Gtk.MenuButton menu_button (string? model_name = null, string? label = null) {
-		    var button = new Gtk.MenuButton ();
-		    button.relief = Gtk.ReliefStyle.NONE;
-		    button.set_image (new Gtk.Image.from_icon_name ("pan-down-symbolic", Gtk.IconSize.BUTTON));
-		    button.set_label (label ?? "");
-		    button.always_show_image = true;
-		    button.image_position = Gtk.PositionType.RIGHT;
-		    if (model_name != null) {
-			    button.set_menu_model (App.instance.get_menu_model (model_name));
-    	    }
-	        return button;
-        }
-        */
-        
         private Gtk.Label create_label (int width_chars = 0) {
             var label = new Gtk.Label ("");
 		    Utils.apply_stylesheet (label, "* { padding: 0; }");
@@ -87,11 +108,11 @@ namespace Edwin {
 		}
 		
 		public void update_location_pages (int current_page, int n_pages) {
-		    location_pages_label.set_label (_(@"$current_page / $n_pages"));
+		    location_pages_label.set_label (_(@"Page $current_page of $n_pages"));
 		}
 		
-		public void update_input_type_label (bool overwrite) {
-		    input_type_label.set_label (overwrite ? "OVR" : "INS");
+		public void set_language_label (string lang) {
+		    language_button.set_label (GtkSpell.Checker.decode_language_code (lang));
 		}
 		
 	}

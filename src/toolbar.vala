@@ -282,7 +282,7 @@ namespace Edwin {
                 paragraph_style_selected (id);
             });
             text_font_chooser.chooser.activated.connect (() => {
-                var family = text_font_chooser.chooser.get_selected_family ();
+                var family = text_font_chooser.chooser.get_selected ();
                 if (family != null) {
                     debug ("User changed text font to %s", family);
                     text_font_chooser.set_font_family (family);

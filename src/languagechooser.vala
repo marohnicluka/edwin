@@ -1,4 +1,4 @@
-/* fontfamilychooser.vala
+/* languagechooser.vala
  *
  * Copyright 2017 Luka Marohnić
  *
@@ -20,25 +20,24 @@
 
 namespace Edwin {
 
-    public class FontFamilyChooser : ListChooser {
+    public class LanguageChooser : ListChooser {
     
-        public FontFamilyChooser (Gtk.Widget widget) {
+        public LanguageChooser (Gtk.Widget widget) {
             base (widget);
+            id_column_index = 1;
         }
         
         protected override string get_initial_id () {
-            return (relative_to as Gtk.Button).label;
+            return App.instance.get_focused_window ().document.language;
         }
     
-        protected override void populate () {
-            var font_map = Pango.cairo_font_map_get_default ();
-            (unowned Pango.FontFamily)[] families;
-            font_map.list_families (out families);
-            Gtk.TreeIter iter;
-            foreach (var family in families) {
+        protected override void populate () {            
+            GtkSpell.Checker.get_language_list ().@foreach ((lang) => {
+                Gtk.TreeIter iter;
                 list_store.append (out iter);
-                list_store.@set (iter, 0, family.get_name ().dup ());
-            }
+                string name = GtkSpell.Checker.decode_language_code (lang);
+                list_store.@set (iter, 0, name, 1, lang);
+            });
         }
         
     }
