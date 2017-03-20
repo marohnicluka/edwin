@@ -42,6 +42,8 @@ namespace Edwin {
         public bool supports_page_breaking { get; protected set; default = true; }
         public int n_pages { get; private set; }
         public int current_page_number { get; private set; default = -1; }
+        public int x_position { get; set; }
+        public int y_position { get; set; }
         
         private uint n_section_breaks { get { return (buffer as TextBuffer).n_section_breaks; } }
 
@@ -255,10 +257,10 @@ namespace Edwin {
             set_size_request (scale (doc.paper_size.width), scale (height));
         }
 
-        protected virtual Gdk.Rectangle to_viewport_coords (Gdk.Rectangle rectangle) {
+        private Gdk.Rectangle to_viewport_coords (Gdk.Rectangle rectangle) {
             var rect = rectangle;
-            rect.x += (doc.get_allocated_width () - get_allocated_width ()) / 2;
-            rect.y += this.margin;
+            rect.x += x_position;
+            rect.y += y_position;
             return rect;
         }
 

@@ -1,9 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <menu id="AppMenu">
-    <item>
-      <attribute name="label" translatable="yes">Preferences</attribute>
-      <attribute name="action">win.Preferences</attribute>
-    </item>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Save Document As…</attribute>
+        <attribute name="action">win.SaveDocumentAs</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New Window</attribute>
+        <attribute name="action">app.NewWindow</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Preferences</attribute>
+        <attribute name="action">app.Preferences</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Help</attribute>
+        <attribute name="action">app.Help</attribute>
+      </item>
+    </section>
   </menu>
 </interface>

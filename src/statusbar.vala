@@ -39,6 +39,7 @@ namespace Edwin {
 	    Gtk.Scale zoom_scale;
 	    Gtk.Label zoom_label;
 	    MenuButton language_button;
+	    HashTable<string, uint> handlers;
 	    
 	    public signal void language_changed (string lang);
 	    public signal void zoom_changed (double @value);
@@ -66,7 +67,14 @@ namespace Edwin {
 			pack_start (create_separator (), false);
 			pack_start (create_frame (zoom_scale), false);
 			pack_start (create_frame (zoom_label), false);
+			handlers = new HashTable<string, uint> (str_hash, str_equal);
 			connect_signals ();
+		}
+		
+		~StatusBar () {
+		    handlers.@foreach ((context_name, handler) => {
+	            Source.remove (handler);
+		    });
 		}
 		
 		private void connect_signals () {
@@ -122,6 +130,17 @@ namespace Edwin {
 		
 		public void remove_all_messages (string context_name) {
 			remove_all (get_context_id (context_name));
+		}
+		
+		public void schedule_clear_messages (string context_name, int timeout = 1500) {
+		    if (context_name in handlers) {
+		        Source.remove (handlers.lookup (context_name));
+		    }
+		    handlers.insert (context_name, Timeout.add (timeout, () => {
+		        remove_all_messages (context_name);
+		        handlers.remove (context_name);
+		        return false;
+		    }));
 		}
 		
 		public void update_location_pages (int current_page, int n_pages) {

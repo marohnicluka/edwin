@@ -133,8 +133,7 @@ namespace Edwin {
             searchbar = new SearchBar (win_actions);
             toolbar = new ToolBar ();
             statusbar = new StatusBar ();
-            document = new Document (this);
-            statusbar.set_zoom (document.zoom);
+            create_new_document ();
             var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
             var scrolled = new Gtk.ScrolledWindow (null, null);
             scrolled.add (document);
@@ -149,6 +148,7 @@ namespace Edwin {
             this.realize.connect (() => {
                 action_set_enabled ("Undo", false);
                 action_set_enabled ("Redo", false);
+                update_title ();
                 document.focus ();
             });
             toolbar.return_focus_to_document.connect (() => {
@@ -159,6 +159,18 @@ namespace Edwin {
             });
             document.notify["can-redo"].connect (() => {
                 action_set_enabled ("Redo", document.can_redo);
+            });
+            document.notify["file"].connect (() => {
+                debug ("Updating window title");
+                update_title ();
+            });
+            document.notify["modified"].connect (() => {
+                if (document.modified) {
+                    var name = header_bar.title;
+                    header_bar.set_title (@"*$name");
+                } else {
+                    update_title ();
+                }
             });
             document.cursor_location_pages_changed.connect ((n, total) => {
                 //debug ("Cursor moved to page %d of %d", n, total);
@@ -200,11 +212,53 @@ namespace Edwin {
             get_action (name).set_enabled (enabled);
         }
         
+        public void create_new_document () {
+            document = new Document (this);
+            statusbar.set_zoom (document.zoom);
+        }
+        
         public void show_document (Document doc) {
             
         }
         
-        private void action_quit () {
+        public void update_title () {
+            if (document.unsaved) {
+                header_bar.set_title (_("Unsaved document"));
+                header_bar.set_subtitle (null);
+            } else {
+                var basename = document.file.get_basename ();
+                header_bar.set_title (basename.substring (0, basename.last_index_of (".")));
+                header_bar.set_subtitle (Utils.get_parent_directory_path (document.file.get_uri ()));
+            }
+        }
+        
+        public void save_document (string? uri = null) {
+            var file = uri == null ? document.file : File.new_for_uri (uri);
+            if (file.query_exists ()) try {
+                file.@delete ();
+            } catch (Error e) {
+                warning (e.message);
+                return;
+            }
+            statusbar.display_message ("saving", _("Saving document…"));
+            document.save.begin (file, (obj, res) => {
+                bool result = document.save.end (res);
+                if (result) {
+                    if (uri != null) {
+                        document.unsaved = false;
+                        document.file = file;
+                    }
+                    document.modified = false;
+                    statusbar.display_message ("saving", _("Saved"));
+                    statusbar.schedule_clear_messages ("saving");
+                } else {
+                    statusbar.remove_all_messages ("saving");
+                    Utils.show_message_box (Gtk.MessageType.ERROR, _("Failed to save file."));
+                }
+            });
+        }
+        
+        public void on_quit () {
             this.destroy ();
         }
         
@@ -218,10 +272,29 @@ namespace Edwin {
         
         private void action_save_document () {
             debug ("Save document");
+            if (document.unsaved) {
+                action_save_document_as ();
+            } else {
+                save_document ();
+            }
         }
         
         private void action_save_document_as () {
             debug ("Save document as");
+            var file_chooser = new Gtk.FileChooserDialog (
+                _("Save document as"), this, Gtk.FileChooserAction.SAVE,
+                _("Cancel"), Gtk.ResponseType.CANCEL,
+                _("Save"), Gtk.ResponseType.ACCEPT);
+            file_chooser.local_only = true;
+            file_chooser.do_overwrite_confirmation = true;
+            var file_filter = new Gtk.FileFilter ();
+            file_filter.set_filter_name (_("Documents"));
+            file_filter.add_pattern ("*.edw");
+            file_chooser.add_filter (file_filter);
+            if (file_chooser.run () == Gtk.ResponseType.ACCEPT) {
+                save_document (file_chooser.get_uri ());
+            }
+            file_chooser.close ();
         }
         
         private void action_undo () {
@@ -252,10 +325,6 @@ namespace Edwin {
         
         private void action_print () {
             debug ("Print");
-        }
-        
-        private void action_preferences () {
-            debug ("Accessing preferences");
         }
         
         private void action_next_match () {
@@ -312,7 +381,6 @@ namespace Edwin {
         }
         
         const GLib.ActionEntry[] win_entries = {
-            {"Quit", action_quit},
             {"NewDocument", action_new_document},
             {"OpenDocument", action_open_document},
             {"SaveDocument", action_save_document},
@@ -325,7 +393,6 @@ namespace Edwin {
             {"PrintPreview", action_print_preview},
             {"PageSetup", action_page_setup},
             {"DocumentProperties", action_document_properties},
-            {"Preferences", action_preferences},
             {"Find", action_find},
             {"NextMatch", action_next_match},
             {"PreviousMatch", action_prev_match},

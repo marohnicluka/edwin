@@ -167,4 +167,32 @@ namespace Edwin.Utils {
 		action.set_state (new Variant.boolean (state));
 	}
 		
+    public void show_message_box (Gtk.MessageType message_type, string message_text) {
+		var msgbox = new Gtk.MessageDialog (
+			App.instance.get_focused_window (),
+			Gtk.DialogFlags.MODAL,
+			message_type,
+			Gtk.ButtonsType.OK,
+			message_text
+		);
+		msgbox.response.connect (() => msgbox.destroy ());
+		msgbox.show ();
+    }
+    
+    public File create_unsaved_document_file () {
+        DateTime timestamp = new DateTime.now_local ();
+		string file_name = _("Document from ") + timestamp.format ("%Y-%m-%d %H:%M:%S");
+		var path = Path.build_filename (App.instance.data_home_folder_unsaved, file_name);
+		return File.new_for_path (path);
+    }
+   
+	public string get_parent_directory_path (string uri) {
+		var home_dir = Environment.get_home_dir ();
+		var path = Path.get_dirname (uri).replace (home_dir, "~");
+		path = path.replace ("file://", "");
+		if ("trash://" in path)
+			path = _("Trash");
+		return Uri.unescape_string (path);
+	}
+	
 }

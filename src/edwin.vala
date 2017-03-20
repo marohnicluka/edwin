@@ -48,7 +48,7 @@ namespace Edwin {
             program_name = app_cmd_name;
             exec_name = app_cmd_name.down ();
             app_years = "2017";
-            app_icon = "accessories-text-editor";
+            app_icon = "edwin";
             app_launcher = exec_name + ".desktop";
             application_id = "org.pantheon." + exec_name;
             main_url = "https://github.com/marohnicluka/edwin";
@@ -76,7 +76,6 @@ namespace Edwin {
         }
         
         private static App _instance = null;
-        
         public static App instance {
             get {
                 if (_instance == null) {
@@ -86,6 +85,42 @@ namespace Edwin {
             }
         }
         
+		private void init_actions () {
+			var action = new SimpleAction ("NewWindow", null);
+			action.activate.connect (action_new_window);
+			add_action (action);
+			action = new SimpleAction ("Preferences", null);
+			action.activate.connect (action_preferences);
+			add_action (action);
+			action = new SimpleAction ("Help", null);
+			action.activate.connect (action_help);
+			add_action (action);
+			action = new SimpleAction ("Quit", null);
+			action.activate.connect (action_quit);
+			add_action (action);
+        }
+
+		public void action_quit () {
+			get_windows ().foreach ((win) => {
+				(win as MainWindow).on_quit ();
+			});
+		}
+		
+		public void action_new_window () {
+			var window = new_window ();
+			window.show_all ();
+			add_window (window);
+		}
+
+		public void action_help () {
+			/* load manual */
+			//var file = get_shared_dir ("docs").get_child ("manual.edw");
+		}
+		
+		public void action_preferences () {
+		
+		}
+
         public MainWindow? get_last_window () {
             unowned List<weak Gtk.Window> windows = get_windows ();
             return windows.length () > 0 ? windows.last ().data as MainWindow : null;
@@ -101,6 +136,7 @@ namespace Edwin {
         }
         
         protected override void activate () {
+            init_actions ();
             set_accelerators ();
             var window = get_last_window ();
             if (window == null) {
@@ -112,8 +148,14 @@ namespace Edwin {
         }
         
         private void set_accelerators () {
-            set_accels_for_action ("win.Quit",              {"<Primary>q"});
+            set_accels_for_action ("app.Quit",              {"<Primary>q"});
+            set_accels_for_action ("app.Help",              {"F1"});
+            set_accels_for_action ("app.Preferences",       {"<Primary><Shift>p"});
+            set_accels_for_action ("app.NewWindow",         {"<Primary><Shift>n"});
             set_accels_for_action ("win.NewDocument",       {"<Primary>n"});
+            set_accels_for_action ("win.SaveDocument",      {"<Primary>s"});
+            set_accels_for_action ("win.SaveDocumentAs",    {"<Primary><Shift>s"});
+            set_accels_for_action ("win.OpenDocument",      {"<Primary>o"});
             set_accels_for_action ("win.Undo",              {"<Primary>z"});
             set_accels_for_action ("win.Redo",              {"<Primary><Shift>z"});
             set_accels_for_action ("win.Find",              {"<Primary>f"});
@@ -194,6 +236,10 @@ namespace Edwin {
             return builder.get_object (name) as MenuModel;
         }
         
+		public static File get_shared_dir (string name) {
+			return File.new_for_path (Constants.PKGDATADIR).get_child (name);
+		}
+		
 		public static int main (string[] args) {
             _app_cmd_name = "Edwin";
             var app = App.instance;

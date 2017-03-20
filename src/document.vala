@@ -62,6 +62,8 @@ namespace Edwin {
 \*************************/
 
         /* public properties */
+        public File file { get; set; default = Utils.create_unsaved_document_file (); }
+        public bool unsaved { get; set; default = true; }
         public PaperSize paper_size { get; set; }
         public double zoom { get; set; default = 1.0; }
         public bool can_undo { get; private set; default = false; }
@@ -71,6 +73,18 @@ namespace Edwin {
         public unowned ToolBar toolbar { get { return main_window.toolbar; } }
         public unowned SearchBar searchbar { get { return main_window.searchbar; } }
         public unowned TextBuffer buffer { get { return text_view.buffer as TextBuffer; } }
+        bool _modified;
+        public bool modified {
+            get { return _modified; }
+            set {
+                _modified = value;
+                if (!_modified) {
+                    buffer.set_modified (false);
+                } else {
+                    debug ("Buffer was modified since the last save");
+                }
+            }
+        }
         bool _check_spelling = false;
         public bool check_spelling {
             get { return _check_spelling; }
@@ -123,12 +137,13 @@ namespace Edwin {
             paper_size.left_border_area_width = 150;
             text_view = new TextView (this);
             put (text_view, outer_margin, outer_margin);
+            text_view.x_position = outer_margin;
+            text_view.y_position = outer_margin;
             undo_buffer = new Gtk.TextBuffer (buffer.tag_table);
             redo_buffer = new Gtk.TextBuffer (buffer.tag_table);
             spell_checker = new GtkSpell.Checker ();
             spell_checker.decode_language_codes = true;
-            text_view.size_allocate.connect (on_text_view_size_changed);
-            this.realize.connect (on_realize);
+            connect_signals ();
         }
         
         ~Document () {
@@ -136,17 +151,33 @@ namespace Edwin {
                 Source.remove (update_toolbar_handler);
             }
         }
+        
+        private void connect_signals () {
+            text_view.size_allocate.connect (on_text_view_size_changed);
+            this.realize.connect (on_realize);
+            buffer.modified_changed.connect (on_buffer_modified_changed);
+        }
 
 /*************\
 |* CALLBACKS *|
 \*************/
+
+        private void on_buffer_modified_changed () {
+            if (buffer.get_modified ()) {
+                this.modified = true;
+            }
+        }
 
         private void on_text_view_size_changed (Gtk.Allocation alloc) {
             width = int.max ((int) Math.round (hadjustment.page_size), alloc.width + 2 * outer_margin);
             height = int.max ((int) Math.round (vadjustment.page_size), alloc.height + 2 * outer_margin);
             Timeout.add (5, () => {
                 if (text_view.get_parent () is Gtk.Layout) {
-                    move (text_view, ((int) width - alloc.width) / 2, ((int) height - alloc.height) / 2);
+                    int xpos = ((int) width - alloc.width) / 2;
+                    int ypos = ((int) height - alloc.height) / 2;
+                    text_view.x_position = xpos;
+                    text_view.y_position = ypos;
+                    move (text_view, xpos, ypos);
                 }
                 return false;
             });
@@ -442,6 +473,47 @@ namespace Edwin {
 /******************\
 |* PUBLIC METHODS *|
 \******************/
+
+        public async bool save (File file) {
+            var format = buffer.register_serialize_tagset (null);
+            Gtk.TextIter start, end;
+            buffer.get_bounds (out start, out end);
+            var data = buffer.serialize (buffer, format, start, end);
+            long written = 0;
+            new Thread<void*> (null, () => {
+                try {
+                    var dos = new DataOutputStream (file.create (FileCreateFlags.REPLACE_DESTINATION));
+                    while (written < data.length) {
+                        written += dos.write (data[written:data.length]);
+                    }
+                } catch (Error e) {
+                    warning (e.message);
+                }
+                Idle.add (save.callback);
+                return null;
+            });
+            yield;
+            return written == data.length;
+        }
+        
+        public bool load (File file)
+            requires (buffer.text.length == 0)
+        {
+            var format = buffer.register_deserialize_tagset (null);
+            try {
+                uint8[] data;
+                FileUtils.get_data (file.get_path (), out data);
+                Gtk.TextIter iter;
+                buffer.get_start_iter (out iter);
+                begin_user_action ();
+                buffer.deserialize (buffer, format, iter, data);
+                end_user_action ();
+                return true;
+            } catch (Error e) {
+                warning (e.message);
+                return false;
+            }
+        }
 
         public Gdk.Rectangle get_viewport_rectangle () {
             return Gdk.Rectangle () {

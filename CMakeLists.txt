@@ -37,7 +37,6 @@ set(EDWIN_DEPS
 	gtk+-3.0>=3.10
 	gtkspell3-3.0>=3.0
 	granite>=0.4
-	gee-0.8>=0.18
 	libxml-2.0>=2.9
 )
 
@@ -82,5 +81,9 @@ install(
 install(
 	FILES ${CMAKE_SOURCE_DIR}/resources/icons/64/edwin.png
 	DESTINATION ${DATADIR}/icons/hicolor/64x64/apps
+)
+install(
+	FILES ${CMAKE_SOURCE_DIR}/resources/icons/128/edwin.png
+	DESTINATION ${DATADIR}/icons/hicolor/128x128/apps
 )
 
