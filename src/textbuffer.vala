@@ -338,11 +338,11 @@ namespace Edwin {
             uint[] deleted_section_breaks = { };
             start.get_marks ().@foreach ((mark) => {
                 if (mark.name != null && mark.name.has_prefix ("edwin-section-break")) {
-                    var serial = (uint) int.parse (mark.name.substring (14));
+                    uint serial = int.parse (mark.name.substring (20));
                     var n = get_section_break_index_from_serial (serial);
+                    delete_mark (mark);
                     section_breaks.remove (section_breaks.nth_data (n));
                     deleted_section_breaks += n;
-                    delete_mark (mark);
                 }
             });
             if (deleted_section_breaks.length > 0) {
@@ -382,9 +382,8 @@ namespace Edwin {
 \*******************/
 
         private uint get_section_break_index_from_serial (uint serial) {
-            uint n = 0;
-            for (; n < section_breaks.length (); n++) {
-                if (section_breaks.nth_data (n).serial == serial) {
+            for (uint n = 0; n < section_breaks.length (); n++) {
+                if (nth_section_break (n).serial == serial) {
                     return n;
                 }
             }
@@ -637,9 +636,9 @@ namespace Edwin {
                 tag = create_tag (name)
             };
             Gtk.TextIter break_iter;
-            uint n;
-            for (n = 0; n < section_breaks.length (); n++) {
-                get_iter_at_mark (out break_iter, section_breaks.nth_data (n).mark);
+            uint n = 0;
+            for (; n < section_breaks.length (); n++) {
+                get_iter_at_mark (out break_iter, nth_section_break (n).mark);
                 if (iter.compare (break_iter) < 0) {
                     break;
                 }
@@ -650,7 +649,7 @@ namespace Edwin {
             return n;
         }
         
-        public unowned SectionBreak? nth_section_break (uint n) {
+        public unowned SectionBreak nth_section_break (uint n) {
             assert (n < section_breaks.length ());
             return section_breaks.nth_data (n);
         }
@@ -675,7 +674,7 @@ namespace Edwin {
                 var next_iter = iter;
                 next_iter.forward_char ();
                 remove_tags ("edwin-section-break", iter, next_iter);
-                apply_tag (section_breaks.nth_data (n).tag, iter, next_iter);
+                apply_tag (nth_section_break (n).tag, iter, next_iter);
                 iter.forward_char ();
                 count++;
             }
@@ -702,7 +701,7 @@ namespace Edwin {
             }
             uint n = 0;
             for (; n < section_breaks.length (); n++) {
-                get_iter_at_mark (out start, section_breaks.nth_data (n).mark);
+                get_iter_at_mark (out start, nth_section_break (n).mark);
                 if (iter.compare (start) < 0) {
                     if (n == 0) {
                         return -1;
@@ -718,7 +717,7 @@ namespace Edwin {
         public void move_to_section_end (ref Gtk.TextIter iter) {
             Gtk.TextIter end;
             for (uint n = 0; n < section_breaks.length (); n++) {
-                get_iter_at_mark (out end, section_breaks.nth_data (n).mark);
+                get_iter_at_mark (out end, nth_section_break (n).mark);
                 if (iter.compare (end) < 0) {
                     iter.assign (end);
                     iter.backward_char ();
@@ -961,16 +960,6 @@ namespace Edwin {
             }
         }
         
-        public Gtk.TextBuffer move_contents_to_temp_buffer () {
-            var temp_buffer = new Gtk.TextBuffer (tag_table);
-            
-            return temp_buffer;
-        }
-        
-        public void restore_contents_from_temp_buffer (Gtk.TextBuffer temp_buffer) {
-        
-        }
-
     }
     
 }

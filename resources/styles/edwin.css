@@ -74,14 +74,12 @@ EdwinToolBarModeButton > .button:active {
     box-shadow: inset 0 0 3px #dedede, 1px 1px white;
 }
 EdwinStatusBar > .frame {
+    padding-right: 3px;
+    border-radius: 0;
     border-width: 1px 0 0 0;
     border-color: #dadada;
     box-shadow: inset 0 1px #f7f7f7;
 }
-EdwinStatusMenuButton {
-    padding: 1px 8px 2px 6px;
-    border-width: 1px 0 0 0;
-    border-color: #dadada;
-    box-shadow: inset 0 1px #f7f7f7;
-    outline-width: 0;
+EdwinStatusBarMenuButton {
+    padding: 0 18px 0 18px;
 }

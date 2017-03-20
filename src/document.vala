@@ -105,7 +105,6 @@ namespace Edwin {
         bool redoable_action_in_progress = false;
         uint undo_operation_counter = 0;
         uint update_toolbar_handler = 0;
-        uint centering_handler = 0;
         int outer_margin = Utils.to_pixels (Utils.INCH, OUTER_MARGIN);
         Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
         Queue<UndoOperation?> redo_stack = new Queue<UndoOperation?> ();
@@ -136,9 +135,6 @@ namespace Edwin {
             if (update_toolbar_handler != 0) {
                 Source.remove (update_toolbar_handler);
             }
-            if (centering_handler != 0) {
-                Source.remove (centering_handler);
-            }
         }
 
 /*************\
@@ -148,9 +144,10 @@ namespace Edwin {
         private void on_text_view_size_changed (Gtk.Allocation alloc) {
             width = int.max ((int) Math.round (hadjustment.page_size), alloc.width + 2 * outer_margin);
             height = int.max ((int) Math.round (vadjustment.page_size), alloc.height + 2 * outer_margin);
-            centering_handler = Timeout.add (5, () => {
-                move (text_view, ((int) width - alloc.width) / 2, ((int) height - alloc.height) / 2);
-                centering_handler = 0;
+            Timeout.add (5, () => {
+                if (text_view.get_parent () is Gtk.Layout) {
+                    move (text_view, ((int) width - alloc.width) / 2, ((int) height - alloc.height) / 2);
+                }
                 return false;
             });
         }

@@ -49,6 +49,7 @@ namespace Edwin {
         uint scroll_to_cursor_handler = 0;
         uint page_breaking_handler = 0;
         uint reshape_handler = 0;
+        ulong size_allocate_handler = 0;
         List<TextSection?> sections = new List<TextSection?> ();
 
 /****************\
@@ -157,26 +158,28 @@ namespace Edwin {
 \*******************/
 
         private void schedule_reshape () {
+            if (size_allocate_handler != 0) {
+                return;
+            }
             if (reshape_handler != 0) {
                 Source.remove (reshape_handler);
             }
-            reshape_handler = Timeout.add (200, () => {
+            reshape_handler = Timeout.add (150, () => {
+                (buffer as TextBuffer).set_zoom (doc.zoom);
+                set_margins ();
+                for (uint n = 0; n < n_section_breaks; n++) {
+                    nth_section_break (n).tag.pixels_below_lines = scale (nth_section_break (n).vskip);
+                }
                 Gtk.TextIter start, end;
                 buffer.get_bounds (out start, out end);
                 doc.begin_user_action ();
                 buffer.@delete (ref start, ref end);
                 doc.end_user_action ();
-                (buffer as TextBuffer).set_zoom (doc.zoom);
-                set_margins ();
-                for (uint n = 0; n < n_section_breaks; n++) {
-                    var sb = nth_section_break (n);
-                    sb.tag.pixels_below_lines = scale (sb.vskip);
-                }
-                ulong handler = 0;
-                handler = size_allocate.connect (() => {
+                size_allocate_handler = size_allocate.connect (() => {
+                    disconnect (size_allocate_handler);
                     doc.undo ();
                     schedule_page_breaking ();
-                    disconnect (handler);
+                    size_allocate_handler = 0;
                 });
                 update_size ();
                 reshape_handler = 0;
@@ -344,12 +347,10 @@ namespace Edwin {
         }
 
         public void remove_sections (uint[] indexes) {
-            uint index = indexes[0] + 1;
             for (int i = 0; i < indexes.length; i++) {
-                assert (index < sections.length ());
-                sections.remove (sections.nth_data (index));
+                sections.remove (sections.nth_data (indexes[i] + 1));
             }
-            mark_section_dirty (indexes[0]);
+            mark_section_dirty (indexes[indexes.length - 1]);
         }
 
         public void insert_section (uint index)
