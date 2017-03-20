@@ -134,6 +134,7 @@ namespace Edwin {
             toolbar = new ToolBar ();
             statusbar = new StatusBar ();
             document = new Document (this);
+            statusbar.set_zoom (document.zoom);
             var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
             var scrolled = new Gtk.ScrolledWindow (null, null);
             scrolled.add (document);
@@ -183,6 +184,9 @@ namespace Edwin {
             searchbar.stop_search.connect (document.clear_search);
             statusbar.language_changed.connect ((lang) => {
                 document.language = lang;
+            });
+            statusbar.zoom_changed.connect ((@value) => {
+                document.zoom = @value;
             });
         }
         

@@ -20,7 +20,7 @@
 
 namespace Edwin {
 
-    public class Document : Gtk.Viewport {
+    public class Document : Gtk.Layout {
 
 /*********************\
 |* STRUCTS AND ENUMS *|
@@ -100,12 +100,13 @@ namespace Edwin {
         TextView text_view;
         Gtk.TextBuffer undo_buffer;
         Gtk.TextBuffer redo_buffer;
-        Gtk.EventBox text_view_box;
         GtkSpell.Checker spell_checker;
         bool redoing_in_progress = false;
         bool redoable_action_in_progress = false;
         uint undo_operation_counter = 0;
         uint update_toolbar_handler = 0;
+        uint centering_handler = 0;
+        int outer_margin = Utils.to_pixels (Utils.INCH, OUTER_MARGIN);
         Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
         Queue<UndoOperation?> redo_stack = new Queue<UndoOperation?> ();
         
@@ -121,8 +122,13 @@ namespace Edwin {
             paper_size = new PaperSize.@default ();
             paper_size.border_area_separator = 25;
             paper_size.left_border_area_width = 150;
-            create_text_view ();
-            create_spell_checker ();
+            text_view = new TextView (this);
+            put (text_view, outer_margin, outer_margin);
+            undo_buffer = new Gtk.TextBuffer (buffer.tag_table);
+            redo_buffer = new Gtk.TextBuffer (buffer.tag_table);
+            spell_checker = new GtkSpell.Checker ();
+            spell_checker.decode_language_codes = true;
+            text_view.size_allocate.connect (on_text_view_size_changed);
             this.realize.connect (on_realize);
         }
         
@@ -130,28 +136,27 @@ namespace Edwin {
             if (update_toolbar_handler != 0) {
                 Source.remove (update_toolbar_handler);
             }
-        }
-
-        private void create_text_view () {
-            text_view = new TextView (this);
-            text_view_box = new Gtk.EventBox ();
-            text_view_box.add (text_view);
-            this.add (text_view_box);
-            undo_buffer = new Gtk.TextBuffer (buffer.tag_table);
-            redo_buffer = new Gtk.TextBuffer (buffer.tag_table);
-        }
-        
-        private void create_spell_checker () {
-            spell_checker = new GtkSpell.Checker ();
-            spell_checker.decode_language_codes = true;
+            if (centering_handler != 0) {
+                Source.remove (centering_handler);
+            }
         }
 
 /*************\
 |* CALLBACKS *|
 \*************/
 
+        private void on_text_view_size_changed (Gtk.Allocation alloc) {
+            width = int.max ((int) Math.round (hadjustment.page_size), alloc.width + 2 * outer_margin);
+            height = int.max ((int) Math.round (vadjustment.page_size), alloc.height + 2 * outer_margin);
+            centering_handler = Timeout.add (5, () => {
+                move (text_view, ((int) width - alloc.width) / 2, ((int) height - alloc.height) / 2);
+                centering_handler = 0;
+                return false;
+            });
+        }
+        
         private void on_realize () {
-			var win = this.get_view_window ();
+			var win = this.get_window ();
 			var events = win.get_events ();
 			win.set_events (events & ~Gdk.EventMask.FOCUS_CHANGE_MASK);
             toolbar.font_family_selected.connect (on_font_family_selected);

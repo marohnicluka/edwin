@@ -29,7 +29,8 @@ namespace Edwin {
 \*********************/
 
         public struct SectionBreak {
-            uint serial;
+            public uint serial;
+            public int vskip;
             public unowned Gtk.TextMark mark;
             public unowned Gtk.TextTag? tag;
         }
@@ -56,6 +57,7 @@ namespace Edwin {
         public unowned Gtk.TextTag tag_no_page_break { get; private set; }
         public unowned Gtk.TextTag tag_search_match { get; private set; }
         public unowned Gtk.TextTag tag_search_match_focused { get; private set; }
+        public unowned Gtk.TextTag tag_zoom { get; private set; }
         public HashTable<string, unowned Gtk.TextTag> font_family_tags { get; private set; }
         public HashTable<int, unowned Gtk.TextTag> text_size_tags { get; private set; }
         public HashTable<Gdk.RGBA?, unowned Gtk.TextTag> text_color_tags { get; private set; }
@@ -122,6 +124,7 @@ namespace Edwin {
                 "background-rgba", Utils.get_color ("highlight"));
             tag_search_match_focused = create_tag ("edwin-internal:search-match-focused",
                 "background-rgba", Utils.get_color ("selection-unfocused"));
+            tag_zoom = create_tag ("edwin-internal:zoom");
             font_family_tags = new HashTable<string, unowned Gtk.TextTag> (str_hash, str_equal);
             text_size_tags = new HashTable<int, unowned Gtk.TextTag> (direct_hash, direct_equal);
             text_color_tags = new HashTable<Gdk.RGBA?, unowned Gtk.TextTag> (
@@ -149,13 +152,13 @@ namespace Edwin {
             notify["has-selection"].connect (on_has_selection_changed);
             notify["text"].connect (on_text_changed);
             paste_done.connect (on_paste_done);
+            mark_set.connect (on_mark_set);
+            apply_tag.connect (on_apply_tag);
+            remove_tag.connect (on_remove_tag);
             insert_text.connect (on_insert_text);
             insert_text.connect_after (on_insert_text_after);
             delete_range.connect (on_delete_range);
             delete_range.connect_after (on_delete_range_after);
-            mark_set.connect (on_mark_set);
-            apply_tag.connect (on_apply_tag);
-            remove_tag.connect (on_remove_tag);
         }
         
 /*************\
@@ -361,6 +364,7 @@ namespace Edwin {
         private void on_insert_text_after (ref Gtk.TextIter end, string text, int len) {
             Gtk.TextIter start;
             get_iter_at_mark (out start, insert_start_mark);
+            apply_tag (tag_zoom, start, end);
             text_view.mark_section_at_iter_dirty (start);
             if (!pasting) {
                 after_insertion_routine (start, end);
@@ -514,6 +518,10 @@ namespace Edwin {
 /******************\
 |* PUBLIC METHODS *|
 \******************/
+
+        public void set_zoom (double @value) {
+            tag_zoom.scale = @value;
+        }
 
         public bool tag_is_internal (Gtk.TextTag tag) {
             return tag_has_id (tag, "gtkspell,edwin-internal");
@@ -951,6 +959,16 @@ namespace Edwin {
                 }
                 replace_search_match (ref iter, replacement);
             }
+        }
+        
+        public Gtk.TextBuffer move_contents_to_temp_buffer () {
+            var temp_buffer = new Gtk.TextBuffer (tag_table);
+            
+            return temp_buffer;
+        }
+        
+        public void restore_contents_from_temp_buffer (Gtk.TextBuffer temp_buffer) {
+        
         }
 
     }

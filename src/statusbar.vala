@@ -36,9 +36,12 @@ namespace Edwin {
         
 	    LanguageChooser language_chooser;
 	    Gtk.Label location_pages_label;
+	    Gtk.Scale zoom_scale;
+	    Gtk.Label zoom_label;
 	    MenuButton language_button;
 	    
 	    public signal void language_changed (string lang);
+	    public signal void zoom_changed (double @value);
 	
 		public StatusBar () {
 			can_focus = false;
@@ -49,11 +52,20 @@ namespace Edwin {
 			msg_area.margin_bottom = 2;
 			location_pages_label = create_label (16);
 			language_button = new MenuButton ();
+			zoom_scale = new Gtk.Scale.with_range (Gtk.Orientation.HORIZONTAL, 20, 200, 1);
+			zoom_scale.add_mark (100, Gtk.PositionType.TOP, null);
+			zoom_scale.draw_value = false;
+			zoom_scale.digits = 0;
+			zoom_scale.margin_left = 20;
+			zoom_scale.width_request = 150;
+			zoom_label = create_label (7);
 			pack_start (create_separator (), false);
 			pack_start (create_frame (language_button), false);
 			pack_start (create_separator (), false);
 			pack_start (create_frame (location_pages_label), false);
 			pack_start (create_separator (), false);
+			pack_start (create_frame (zoom_scale), false);
+			pack_start (create_frame (zoom_label), false);
 			connect_signals ();
 		}
 		
@@ -73,6 +85,11 @@ namespace Edwin {
 		        } else {
 		            language_chooser.hide ();
 		        }
+		    });
+		    zoom_scale.value_changed.connect (() => {
+		        var @value = zoom_scale.get_value ();
+		        zoom_label.set_label ("%d%%".printf ((int) Math.round(@value)));
+		        zoom_changed (@value / 100.0);
 		    });
 		}
 		
@@ -113,6 +130,10 @@ namespace Edwin {
 		
 		public void set_language_label (string lang) {
 		    language_button.set_label (GtkSpell.Checker.decode_language_code (lang));
+		}
+		
+		public void set_zoom (double @value) {
+		    zoom_scale.set_value (@value * 100);
 		}
 		
 	}
