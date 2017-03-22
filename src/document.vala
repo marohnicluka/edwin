@@ -20,7 +20,7 @@
 
 namespace Edwin {
 
-    public class Document : Gtk.Layout {
+    public class Document : Gtk.ScrolledWindow {
 
 /*********************\
 |* STRUCTS AND ENUMS *|
@@ -65,12 +65,13 @@ namespace Edwin {
         public File file { get; set; default = Utils.create_unsaved_document_file (); }
         public bool unsaved { get; set; default = true; }
         public PaperSize paper_size { get; set; }
+        public Granite.Widgets.SourceList outline { get; construct set; }
         public double zoom { get; set; default = 1.0; }
         public bool can_undo { get; private set; default = false; }
         public bool can_redo { get; private set; default = false; }
         public bool user_action_in_progress { get; private set; default = false; }
         public bool doing_undo_redo { get { return redoable_action_in_progress || redoing_in_progress; } }
-        public unowned ToolBar toolbar { get { return main_window.toolbar; } }
+        public unowned ToolBar toolbar { get { return main_window.dynamic_toolbar; } }
         public unowned SearchBar searchbar { get { return main_window.searchbar; } }
         public unowned TextBuffer buffer { get { return text_view.buffer as TextBuffer; } }
         bool _modified;
@@ -102,7 +103,6 @@ namespace Edwin {
             set {
                 try {
                     spell_checker.set_language (value);
-                    main_window.statusbar.set_language_label (value);
                 } catch (Error e) {
                     warning (e.message);
                 }
@@ -119,7 +119,6 @@ namespace Edwin {
         bool redoable_action_in_progress = false;
         uint undo_operation_counter = 0;
         uint update_toolbar_handler = 0;
-        int outer_margin = Utils.to_pixels (Utils.INCH, OUTER_MARGIN);
         Queue<UndoOperation?> undo_stack = new Queue<UndoOperation?> ();
         Queue<UndoOperation?> redo_stack = new Queue<UndoOperation?> ();
         
@@ -133,16 +132,13 @@ namespace Edwin {
             Object (hadjustment: null, vadjustment: null);
             this.main_window = main_window;
             paper_size = new PaperSize.@default ();
-            paper_size.border_area_separator = 25;
-            paper_size.left_border_area_width = 150;
             text_view = new TextView (this);
-            put (text_view, outer_margin, outer_margin);
-            text_view.x_position = outer_margin;
-            text_view.y_position = outer_margin;
+            add (text_view);
             undo_buffer = new Gtk.TextBuffer (buffer.tag_table);
             redo_buffer = new Gtk.TextBuffer (buffer.tag_table);
             spell_checker = new GtkSpell.Checker ();
             spell_checker.decode_language_codes = true;
+            outline = new Granite.Widgets.SourceList ();
             connect_signals ();
         }
         
@@ -153,9 +149,11 @@ namespace Edwin {
         }
         
         private void connect_signals () {
-            text_view.size_allocate.connect (on_text_view_size_changed);
-            this.realize.connect (on_realize);
+            realize.connect (on_realize);
+            spell_checker.language_changed.connect (on_language_changed);
             buffer.modified_changed.connect (on_buffer_modified_changed);
+            buffer.search_finished.connect (on_search_finished);
+            text_view.notify["has-focus"].connect (on_has_focus_changed);
         }
 
 /*************\
@@ -168,25 +166,7 @@ namespace Edwin {
             }
         }
 
-        private void on_text_view_size_changed (Gtk.Allocation alloc) {
-            width = int.max ((int) Math.round (hadjustment.page_size), alloc.width + 2 * outer_margin);
-            height = int.max ((int) Math.round (vadjustment.page_size), alloc.height + 2 * outer_margin);
-            Timeout.add (5, () => {
-                if (text_view.get_parent () is Gtk.Layout) {
-                    int xpos = ((int) width - alloc.width) / 2;
-                    int ypos = ((int) height - alloc.height) / 2;
-                    text_view.x_position = xpos;
-                    text_view.y_position = ypos;
-                    move (text_view, xpos, ypos);
-                }
-                return false;
-            });
-        }
-        
         private void on_realize () {
-			var win = this.get_window ();
-			var events = win.get_events ();
-			win.set_events (events & ~Gdk.EventMask.FOCUS_CHANGE_MASK);
             toolbar.font_family_selected.connect (on_font_family_selected);
             toolbar.text_size_selected.connect (on_text_size_selected);
             toolbar.text_color_selected.connect (on_text_color_selected);
@@ -194,16 +174,11 @@ namespace Edwin {
             toolbar.text_italic_toggled.connect (on_text_italic_toggled);
             toolbar.text_underline_toggled.connect (on_text_underline_toggled);
             toolbar.paragraph_alignment_selected.connect (on_paragraph_alignment_selected);
-            buffer.search_finished.connect (on_search_finished);
-            text_view.notify["has-focus"].connect (on_has_focus_changed);
-            text_view.notify["n-pages"].connect (emit_cursor_location_pages);
-            text_view.notify["current-page-number"].connect (emit_cursor_location_pages);
-            spell_checker.language_changed.connect (on_language_changed);
             set_defaults ();
         }
         
         private void on_language_changed (string new_lang) {
-            main_window.statusbar.set_language_label (new_lang);
+
         }
         
         private void on_has_focus_changed () {
@@ -317,10 +292,6 @@ namespace Edwin {
 |* PRIVATE METHODS *|
 \*******************/
 
-        private void emit_cursor_location_pages () {
-            cursor_location_pages_changed (text_view.current_page_number, text_view.n_pages);
-        }
-        
         private void on_focused () {
             if (searchbar.search_mode_enabled) {
                 clear_search ();
@@ -370,7 +341,6 @@ namespace Edwin {
                 buffer.insert_range (ref end, chunk_start, chunk_end);
                 chunk_buffer.@delete (ref chunk_start, ref chunk_end);
                 buffer.get_iter_at_mark (out start, buffer.pasted_start_mark);
-                buffer.restore_section_breaks (start, end);
                 buffer.place_cursor (end);
                 break;
             case UndoOperationType.TAG:
@@ -440,7 +410,7 @@ namespace Edwin {
                     has_underline = false;
                 }
                 iter.assign (start);
-                while (buffer.forward_paragraph (ref iter) && iter.compare (end) < 0) {
+                while (buffer.forward_paragraph (ref iter)) {
                     if (buffer.get_paragraph_justification (iter) != justification) {
                         justification = -1;
                         break;
@@ -460,7 +430,8 @@ namespace Edwin {
         }
 
         private void set_defaults () {
-            language = Environment.get_variable ("LANG");
+            var lang = Environment.get_variable ("LANG");
+            language = lang.substring (0, lang.index_of ("."));
             var attributes = text_view.get_default_attributes ();
             toolbar.set_text_font_desc (attributes.font);
             toolbar.set_text_color (text_view.default_text_color);
@@ -475,10 +446,9 @@ namespace Edwin {
 \******************/
 
         public async bool save (File file) {
-            var format = buffer.register_serialize_tagset (null);
             Gtk.TextIter start, end;
             buffer.get_bounds (out start, out end);
-            var data = buffer.serialize (buffer, format, start, end);
+            var data = buffer.serialize (buffer, buffer.serialize_format, start, end);
             long written = 0;
             new Thread<void*> (null, () => {
                 try {
@@ -499,29 +469,19 @@ namespace Edwin {
         public bool load (File file)
             requires (buffer.text.length == 0)
         {
-            var format = buffer.register_deserialize_tagset (null);
             try {
                 uint8[] data;
                 FileUtils.get_data (file.get_path (), out data);
                 Gtk.TextIter iter;
                 buffer.get_start_iter (out iter);
                 begin_user_action ();
-                buffer.deserialize (buffer, format, iter, data);
+                buffer.deserialize (buffer, buffer.deserialize_format, iter, data);
                 end_user_action ();
                 return true;
             } catch (Error e) {
                 warning (e.message);
                 return false;
             }
-        }
-
-        public Gdk.Rectangle get_viewport_rectangle () {
-            return Gdk.Rectangle () {
-                x = (int) Math.round (hadjustment.@value),
-                y = (int) Math.round (vadjustment.@value),
-                width = (int) Math.round (hadjustment.page_size),
-                height = (int) Math.round (vadjustment.page_size)
-            };
         }
 
         public void push_undo_operation_insert (Gtk.TextIter start, Gtk.TextIter end) {
@@ -568,7 +528,6 @@ namespace Edwin {
                 redo_buffer.text = "";
                 can_redo = false;
             }
-            text_view.break_pages ();
         }
         
         public void begin_user_action () {

@@ -163,6 +163,8 @@ namespace Edwin {
             set_accels_for_action ("win.PreviousMatch",     {"<Primary><Shift>g"});
             set_accels_for_action ("win.Replace",           {"<Primary>r"});
             set_accels_for_action ("win.ReplaceAll",        {"<Primary><Shift>r"});
+            set_accels_for_action ("win.TextBold",          {"<Primary>b"});
+            set_accels_for_action ("win.TextItalic",        {"<Primary>i"});
         }
                 
         private void create_unsaved_documents_directory () {

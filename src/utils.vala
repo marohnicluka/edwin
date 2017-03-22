@@ -22,18 +22,6 @@ namespace Edwin.Utils {
 
     public const int INCH = 72;
     
-    /**
-     *  The sign function.
-     */
-    public int sgn (int n) {
-        if (n > 0) {
-            return 1;
-        } else if (n < 0) {
-            return -1;
-        }
-        return 0;
-    }
-    
     public Gdk.RGBA get_color (string id, double alpha = 1.0) {
         var rgba = Gdk.RGBA ();
         switch (id) {
@@ -107,20 +95,8 @@ namespace Edwin.Utils {
         }
     }
 
-    public void fill_rectangle_as_background (Cairo.Context cr, Gdk.Rectangle rect) {
-        var window = App.instance.active_window;
-        var style_context = window.get_style_context ();
-        style_context.render_background (cr, rect.x, rect.y, rect.width, rect.height);
-    }
-    
-    public void fill_white_rectangle (Cairo.Context cr, Gdk.Rectangle rect) {
-        cr.set_source_rgba (1.0, 1.0, 1.0, 1.0);
-        Gdk.cairo_rectangle (cr, rect);
-        cr.fill ();
-    }
-    
-    public void draw_rectangle (Cairo.Context cr, Gdk.Rectangle rect, Gdk.RGBA color) {
-        Gdk.cairo_set_source_rgba (cr, color);
+    public void draw_rectangle (Cairo.Context cr, Gdk.Rectangle rect, string color_id) {
+        Gdk.cairo_set_source_rgba (cr, get_color (color_id));
         Gdk.cairo_rectangle (cr, rect);
         cr.stroke ();
     }

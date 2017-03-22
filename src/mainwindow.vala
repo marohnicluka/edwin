@@ -26,8 +26,10 @@ namespace Edwin {
         public Document document;
         public Gtk.UIManager ui;
         public Granite.Widgets.AppMenu app_menu;
-        public Gtk.HeaderBar header_bar;
+        public Gtk.HeaderBar main_toolbar;
         public SearchBar searchbar;
+        public Gtk.Paned paned;
+        public ToolBar dynamic_toolbar;
         public Gtk.ToolButton button_new;
         public Gtk.ToolButton button_open;
         public Gtk.ToolButton button_undo;
@@ -39,8 +41,6 @@ namespace Edwin {
         public Gtk.ToolButton button_properties;
         public Gtk.ToggleToolButton button_search;
         public Gtk.ToggleToolButton button_spelling;
-        public ToolBar toolbar;
-        public StatusBar statusbar;
         public SimpleActionGroup win_actions;
         
         public MainWindow (App app) {
@@ -51,17 +51,14 @@ namespace Edwin {
             this.set_size_request (1130, 700);
             this.hide_titlebar_when_maximized = false;
             this.icon_name = "accessories-text-editor";
-            init_stylesheet ();
             init_actions ();
-            init_header_bar ();
+            init_main_toolbar ();
             init_layout ();
+            init_stylesheet ();
             connect_signals ();
         }
         
         private void init_stylesheet () {
-            var rgba = Gdk.RGBA ();
-            rgba.parse ("#efefef");
-            override_background_color (0, rgba);
             var provider = new Gtk.CssProvider ();
             var base_path = App.instance.resource_path ();
             var path = Path.build_filename (base_path, "resources", "styles", "edwin.css");
@@ -77,17 +74,17 @@ namespace Edwin {
             insert_action_group ("win", win_actions);
         }
         
-        private void init_header_bar () {
-            header_bar = new Gtk.HeaderBar ();
-            header_bar.get_style_context ().add_class ("primary-toolbar");
-            header_bar.title = this.title;
-            header_bar.show_close_button = true;
-            set_titlebar (header_bar);
+        private void init_main_toolbar () {
+            main_toolbar = new Gtk.HeaderBar ();
+            main_toolbar.get_style_context ().add_class ("primary-toolbar");
+            main_toolbar.title = this.title;
+            main_toolbar.show_close_button = true;
+            set_titlebar (main_toolbar);
             /* create main menu */
             var menu = new Gtk.Menu.from_model (app.get_menu_model ("AppMenu"));
             app_menu = new Granite.Widgets.AppMenu.with_app (app, menu);
             app_menu.show_about.connect (app.show_about);
-            header_bar.pack_end (app_menu);
+            main_toolbar.pack_end (app_menu);
             /* add buttons */
             button_new = Utils.create_tool_button ("document-new", "NewDocument",
                 _("Add a new document"));
@@ -112,36 +109,36 @@ namespace Edwin {
             button_spelling = Utils.create_toggle_button ("tools-check-spelling", "CheckSpelling",
                 _("Check spelling"));
             /* pack buttons */
-            header_bar.pack_start (button_new);
-            header_bar.pack_start (button_open);
-            header_bar.pack_start (new Gtk.SeparatorToolItem ());
-            header_bar.pack_start (button_page_setup);
-            header_bar.pack_start (button_properties);
-            header_bar.pack_start (new Gtk.SeparatorToolItem ());
-            header_bar.pack_start (button_undo);
-            header_bar.pack_start (button_redo);
-            header_bar.pack_end (new Gtk.SeparatorToolItem ());
-            header_bar.pack_end (button_export);
-            header_bar.pack_end (button_print);
-            header_bar.pack_end (button_save);
-            header_bar.pack_end (new Gtk.SeparatorToolItem ());
-            header_bar.pack_end (button_search);
-            header_bar.pack_end (button_spelling);
+            main_toolbar.pack_start (button_new);
+            main_toolbar.pack_start (button_open);
+            main_toolbar.pack_start (new Gtk.SeparatorToolItem ());
+            main_toolbar.pack_start (button_page_setup);
+            main_toolbar.pack_start (button_properties);
+            main_toolbar.pack_start (new Gtk.SeparatorToolItem ());
+            main_toolbar.pack_start (button_undo);
+            main_toolbar.pack_start (button_redo);
+            main_toolbar.pack_end (new Gtk.SeparatorToolItem ());
+            main_toolbar.pack_end (button_export);
+            main_toolbar.pack_end (button_print);
+            main_toolbar.pack_end (button_save);
+            main_toolbar.pack_end (new Gtk.SeparatorToolItem ());
+            main_toolbar.pack_end (button_search);
+            main_toolbar.pack_end (button_spelling);
         }
         
         private void init_layout () {
             searchbar = new SearchBar (win_actions);
-            toolbar = new ToolBar ();
-            statusbar = new StatusBar ();
+            dynamic_toolbar = new ToolBar ();
             create_new_document ();
             var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
-            var scrolled = new Gtk.ScrolledWindow (null, null);
-            scrolled.add (document);
+            var paned = new Gtk.Paned (Gtk.Orientation.HORIZONTAL);
             vbox.pack_start (searchbar, false);
-            vbox.pack_start (toolbar, false);
-            vbox.pack_start (scrolled);
-            vbox.pack_start (statusbar, false);
-            this.add (vbox);
+            vbox.pack_start (dynamic_toolbar, false);
+            vbox.pack_start (document);
+            paned.add1 (document.outline);
+            paned.add2 (vbox);
+            paned.position = 200;
+            this.add (paned);
         }
         
         private void connect_signals () {
@@ -151,7 +148,7 @@ namespace Edwin {
                 update_title ();
                 document.focus ();
             });
-            toolbar.return_focus_to_document.connect (() => {
+            dynamic_toolbar.return_focus_to_document.connect (() => {
                 document.focus ();
             });
             document.notify["can-undo"].connect (() => {
@@ -166,15 +163,11 @@ namespace Edwin {
             });
             document.notify["modified"].connect (() => {
                 if (document.modified) {
-                    var name = header_bar.title;
-                    header_bar.set_title (@"*$name");
+                    var name = main_toolbar.title;
+                    main_toolbar.set_title (@"*$name");
                 } else {
                     update_title ();
                 }
-            });
-            document.cursor_location_pages_changed.connect ((n, total) => {
-                //debug ("Cursor moved to page %d of %d", n, total);
-                statusbar.update_location_pages (n + 1, total);
             });
             searchbar.notify["search-mode-enabled"].connect (() => {
                 bool active = searchbar.search_mode_enabled;
@@ -194,12 +187,6 @@ namespace Edwin {
             });
             searchbar.search_changed.connect (document.search);
             searchbar.stop_search.connect (document.clear_search);
-            statusbar.language_changed.connect ((lang) => {
-                document.language = lang;
-            });
-            statusbar.zoom_changed.connect ((@value) => {
-                document.zoom = @value;
-            });
         }
         
         public SimpleAction get_action (string name) {
@@ -214,7 +201,6 @@ namespace Edwin {
         
         public void create_new_document () {
             document = new Document (this);
-            statusbar.set_zoom (document.zoom);
         }
         
         public void show_document (Document doc) {
@@ -223,12 +209,12 @@ namespace Edwin {
         
         public void update_title () {
             if (document.unsaved) {
-                header_bar.set_title (_("Unsaved document"));
-                header_bar.set_subtitle (null);
+                main_toolbar.set_title (_("Unsaved document"));
+                main_toolbar.set_subtitle (null);
             } else {
                 var basename = document.file.get_basename ();
-                header_bar.set_title (basename.substring (0, basename.last_index_of (".")));
-                header_bar.set_subtitle (Utils.get_parent_directory_path (document.file.get_uri ()));
+                main_toolbar.set_title (basename.substring (0, basename.last_index_of (".")));
+                main_toolbar.set_subtitle (Utils.get_parent_directory_path (document.file.get_uri ()));
             }
         }
         
@@ -240,7 +226,7 @@ namespace Edwin {
                 warning (e.message);
                 return;
             }
-            statusbar.display_message ("saving", _("Saving document…"));
+            debug ("Saving document...");
             document.save.begin (file, (obj, res) => {
                 bool result = document.save.end (res);
                 if (result) {
@@ -249,11 +235,10 @@ namespace Edwin {
                         document.file = file;
                     }
                     document.modified = false;
-                    statusbar.display_message ("saving", _("Saved"));
-                    statusbar.schedule_clear_messages ("saving");
+                    debug ("Document saved successfully");
                 } else {
-                    statusbar.remove_all_messages ("saving");
-                    Utils.show_message_box (Gtk.MessageType.ERROR, _("Failed to save file."));
+                    debug ("Failed to save document");
+                    Utils.show_message_box (Gtk.MessageType.ERROR, _("Failed to save document."));
                 }
             });
         }
@@ -356,6 +341,16 @@ namespace Edwin {
             }
         }
         
+        private void action_text_bold () {
+            debug ("Change bold state");
+            dynamic_toolbar.flip_bold_state ();
+        }
+        
+        private void action_text_italic () {
+            debug ("Change italic state");
+            dynamic_toolbar.flip_italic_state ();
+        }
+        
         private void change_state_search (SimpleAction action, Variant @value) {
             debug ("Change find state");
             action.set_state (@value);
@@ -370,14 +365,6 @@ namespace Edwin {
             bool active = action.state.get_boolean ();
             document.check_spelling = active;
             button_spelling.active = active;
-        }
-        
-        private void change_state_text_bold (SimpleAction action) {
-            debug ("Change bold state");
-        }
-        
-        private void change_state_text_italic (SimpleAction action) {
-            debug ("Change italic state");
         }
         
         const GLib.ActionEntry[] win_entries = {
@@ -398,11 +385,11 @@ namespace Edwin {
             {"PreviousMatch", action_prev_match},
             {"Replace", action_replace},
             {"ReplaceAll", action_replace_all},
+            {"TextBold", action_text_bold},
+            {"TextItalic", action_text_italic},
             /* toggles */
             {"Search", null, null, "false", change_state_search},
             {"CheckSpelling", null, null, "false", change_state_check_spelling},
-            {"TextBold", null, null, "false", change_state_text_bold},
-            {"TextItalic", null, null, "false", change_state_text_italic},
         };
         
     }

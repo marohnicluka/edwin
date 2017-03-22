@@ -15,7 +15,6 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	mainwindow.vala
 	toolbar.vala
 	searchbar.vala
-	statusbar.vala
 	document.vala
 	textbuffer.vala
 	textview.vala
@@ -24,7 +23,6 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	styletemplates.vala
 	listchooser.vala
 	fontfamilychooser.vala
-	languagechooser.vala
 	settings.vala
 	utils.vala
 PACKAGES

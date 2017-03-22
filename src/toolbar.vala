@@ -255,9 +255,9 @@ namespace Edwin {
             add_separator ("text-toolbar");
             add_widget (text_size_chooser);
             var button_box = new ToolBox ("text-toolbar-style-box");
-            button_bold = new Button ("text-tools::bold", null, null);
-            button_italic = new Button ("text-tools::italic", null, null);
-            button_underline = new Button ("text-tools::underline", null, null);
+            button_bold = new Button ("text-tools::bold", null, _("Bold"));
+            button_italic = new Button ("text-tools::italic", null, _("Italic"));
+            button_underline = new Button ("text-tools::underline", null, _("Underline"));
             button_box.pack_start (button_bold);
             button_box.pack_start (button_italic);
             button_box.pack_start (button_underline);
@@ -471,7 +471,15 @@ namespace Edwin {
         public bool get_underline_state () {
             return button_underline.active;
         }
-
+        
+        public void flip_bold_state () {
+            button_bold.active = !button_bold.active;
+        }
+        
+        public void flip_italic_state () {
+            button_italic.active = !button_italic.active;
+        }
+        
     }
     
 }

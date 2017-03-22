@@ -1,6 +1,6 @@
 EdwinToolBar {
     background: linear-gradient(to bottom, #f9fbfa, #efefef);
-    border-color: #dadada;
+    border-color: #d0d0d0;
     padding: 12px;
     box-shadow: 0 1px #f7f7f7;
 }
@@ -72,15 +72,4 @@ EdwinToolBarModeButton > .button:active {
     border-color: #b6b6b6;
     background-color: #ebebeb;
     box-shadow: inset 0 0 3px #dedede, 1px 1px white;
-}
-EdwinStatusBar > .frame {
-    padding-left: 6px;
-    padding-right: 3px;
-    border-radius: 0;
-    border-width: 1px 0 0 0;
-    border-color: #dadada;
-    box-shadow: inset 0 1px #f7f7f7;
-}
-EdwinStatusBarMenuButton {
-    padding: 0 18px 0 18px;
 }
