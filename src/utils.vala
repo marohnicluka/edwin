@@ -101,6 +101,12 @@ namespace Edwin.Utils {
         cr.stroke ();
     }
     
+    public void fill_rectangle (Cairo.Context cr, Gdk.Rectangle rect, Gdk.RGBA color) {
+        Gdk.cairo_set_source_rgba (cr, color);
+        Gdk.cairo_rectangle (cr, rect);
+        cr.fill ();
+    }
+    
     public void refresh_gui () {
         while (Gtk.events_pending ()) {
             Gtk.main_iteration ();
@@ -120,7 +126,7 @@ namespace Edwin.Utils {
             get_icon (icon_name) : new Gtk.Image.from_icon_name (icon_name, Gtk.IconSize.BUTTON);
         var button = new Gtk.ToolButton (image, null);
         if (action_name != null) {
-            button.set_action_name (@"win.$action_name");
+            button.set_action_name (action_name);
         }
         button.set_tooltip_text (tip);
         return button;
@@ -132,7 +138,7 @@ namespace Edwin.Utils {
         var button = new Gtk.ToggleToolButton ();
         button.set_icon_widget (image);
         if (action_name != null) {
-            button.set_action_name (@"win.$action_name");
+            button.set_action_name (action_name);
         }
         button.set_tooltip_text (tip);
         return button;

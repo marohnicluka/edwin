@@ -1,4 +1,4 @@
-/* toolbar.vala
+/* dynamictoolbar.vala
  *
  * Copyright 2017 Luka Marohnić
  *
@@ -26,7 +26,7 @@ namespace Edwin {
         ITEMIZE
     }
 
-    public class ToolBar : Gtk.Toolbar {
+    public class DynamicToolBar : Gtk.Toolbar {
     
         const int CHOOSER_WIDTH = 130;
         const int DEFAULT_FONT_SIZE = 12;
@@ -233,7 +233,7 @@ namespace Edwin {
         public signal void list_type_selected (TextListType type);
         public signal void return_focus_to_document ();
         
-        public ToolBar () {
+        public DynamicToolBar () {
             create_layout ();
             connect_signals ();
         }

@@ -27,8 +27,6 @@ namespace Edwin {
         Gtk.Entry replace_entry = new Gtk.Entry ();
         Gtk.Button button_next_match = new Gtk.Button.from_icon_name ("go-down");
         Gtk.Button button_prev_match = new Gtk.Button.from_icon_name ("go-up");
-        Gtk.Button button_replace = new Gtk.Button.with_label (_("Replace"));
-        Gtk.Button button_replace_all = new Gtk.Button.with_label (_("Replace all"));
         
         bool _not_found = false;
         public bool not_found {
@@ -67,26 +65,15 @@ namespace Edwin {
             replace_entry.placeholder_text = _("Replace with");
             button_next_match.relief = Gtk.ReliefStyle.NONE;
             button_prev_match.relief = Gtk.ReliefStyle.NONE;
-            button_replace.relief = Gtk.ReliefStyle.NONE;
-            button_replace_all.relief = Gtk.ReliefStyle.NONE;
             button_next_match.can_focus = false;
             button_prev_match.can_focus = false;
-            button_replace.can_focus = false;
-            button_replace_all.can_focus = false;
             button_next_match.set_action_name ("win.NextMatch");
             button_prev_match.set_action_name ("win.PreviousMatch");
-            button_replace.set_action_name ("win.Replace");
-            button_replace_all.set_action_name ("win.ReplaceAll");
-            var separator = new Gtk.SeparatorToolItem ();
-            separator.draw = false;
             var hbox = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
             hbox.pack_start (search_entry);
             hbox.pack_start (button_prev_match, false);
             hbox.pack_start (button_next_match, false);
-            hbox.pack_start (separator, false);
             hbox.pack_start (replace_entry);
-            hbox.pack_start (button_replace, false);
-            hbox.pack_start (button_replace_all, false);
             add (hbox);
             connect_signals ();
         }
@@ -105,7 +92,8 @@ namespace Edwin {
             search_entry.key_press_event.connect (on_key_press_event);
             replace_entry.key_press_event.connect (on_key_press_event);
             replace_entry.activate.connect (() => {
-                button_replace.clicked ();
+                var action_replace = win_actions.lookup_action ("Replace") as SimpleAction;
+                action_replace.activate (null);
             });
         }
         

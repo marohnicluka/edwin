@@ -1,4 +1,4 @@
-/* textbuffer.vala
+/* documentbuffer.vala
  *
  * Copyright 2017 Luka Marohnić
  *
@@ -20,15 +20,17 @@
 
 namespace Edwin {
 
-    public class TextBuffer : Gtk.TextBuffer {
+    public class DocumentBuffer : Gtk.TextBuffer {
     
-        public const Gtk.TextSearchFlags SEARCH_FLAGS = Gtk.TextSearchFlags.TEXT_ONLY | Gtk.TextSearchFlags.CASE_INSENSITIVE;
+        public const Gtk.TextSearchFlags SEARCH_FLAGS =
+            Gtk.TextSearchFlags.TEXT_ONLY |
+            Gtk.TextSearchFlags.CASE_INSENSITIVE;
 
-/*************************\
-|* FIELDS AND PROPERTIES *|
-\*************************/
+/**********************\
+|* FIELDS AND SIGNALS *|
+\**********************/
 
-        public unowned TextView text_view { get; construct set; }
+        public unowned DocumentView view { get; construct set; }
         public unowned Gtk.TextMark insert_start_mark { get; private set; }
         public unowned Gtk.TextMark pasted_start_mark { get; private set; }
         public unowned Gtk.TextMark selection_start_mark { get; private set; }
@@ -55,9 +57,10 @@ namespace Edwin {
         public bool text_properties_changed { get; set; default = false; }
         public bool pasting { get; private set; default = false; }
         public bool can_replace { get; private set; default = false; }
-        public unowned Document doc { get { return text_view.doc; } }
+        public unowned Document doc { get { return view.doc; } }
         public Gdk.Atom serialize_format { get; private set; }
         public Gdk.Atom deserialize_format { get; private set; }
+        public uint n_forced_page_breaks { get { return forced_page_breaks.length (); } }
         public Gtk.TextIter cursor {
             get {
                 Gtk.TextIter iter;
@@ -74,17 +77,19 @@ namespace Edwin {
         bool deletion_in_progress = false;
         bool user_is_deleting = false;
         bool user_is_typing = false;
-        
+        List<unowned Gtk.TextMark> forced_page_breaks;
+                
         public signal void search_finished (int matches);
         
 /****************\
 |* CONSTRUCTION *|
 \****************/
 
-        public TextBuffer (TextView text_view) {
-            this.text_view = text_view;
+        public DocumentBuffer (DocumentView view) {
+            this.view = view;
             serialize_format = register_serialize_tagset (null);
             deserialize_format = register_deserialize_tagset (null);
+            forced_page_breaks = new List<unowned Gtk.TextMark> ();
             create_tags_and_marks ();
             connect_signals ();
         }
@@ -132,13 +137,13 @@ namespace Edwin {
         }
         
         private void connect_signals () {
-            text_view.move_cursor.connect (on_move_cursor);
-            text_view.key_press_event.connect (on_key_press_event);
-            text_view.drag_begin.connect (on_drag_begin);
-            text_view.drag_end.connect (on_drag_end);
-            text_view.backspace.connect (on_backspace);
-            text_view.delete_from_cursor.connect (on_delete_from_cursor);
-            text_view.paste_clipboard.connect (on_paste_clipboard);
+            view.move_cursor.connect (on_move_cursor);
+            view.key_press_event.connect (on_key_press_event);
+            view.drag_begin.connect (on_drag_begin);
+            view.drag_end.connect (on_drag_end);
+            view.backspace.connect (on_backspace);
+            view.delete_from_cursor.connect (on_delete_from_cursor);
+            view.paste_clipboard.connect (on_paste_clipboard);
             notify["cursor-position"].connect (on_cursor_position_changed);
             notify["has-selection"].connect (on_has_selection_changed);
             notify["text"].connect (on_text_changed);
@@ -205,7 +210,7 @@ namespace Edwin {
             after_insertion_routine (start, cursor);
             doc.end_user_action ();
             pasting = false;
-            text_view.scroll_to_cursor ();
+            view.scroll_to_cursor ();
         }
         
         private void on_mark_set (Gtk.TextIter location, Gtk.TextMark mark) {
@@ -213,17 +218,17 @@ namespace Edwin {
             {
                 on_selection_range_changed ();
             } else if (mark == current_search_match_mark) {
-                text_view.scroll_mark_onscreen (current_search_match_mark);
+                view.scroll_mark_onscreen (current_search_match_mark);
             }
         }
 
         private void on_has_selection_changed () {
             if (!has_selection) {
                 can_replace = false;
-                if (!text_view.has_focus) {
+                if (!view.has_focus) {
                     restore_selection ();
                 }
-            } else if (text_view.has_focus) {
+            } else if (view.has_focus) {
                 save_selection ();
             }
         }
@@ -240,7 +245,7 @@ namespace Edwin {
             case Gdk.Key.Return:
                 if (ctrl) {
                     insert_at_cursor ("\n", -1);
-                    text_view.insert_page_break (cursor);
+                    insert_forced_page_break (cursor);
                     return true;
                 }
                 break;
@@ -291,8 +296,8 @@ namespace Edwin {
                 doc.end_user_action ();
             }
             cursor_movement_direction = 0;
-            if (text_view.has_focus) {
-                text_view.scroll_to_cursor ();
+            if (view.has_focus) {
+                view.scroll_to_cursor ();
             }
             if (!has_selection) {
                 doc.schedule_update_toolbar ();
@@ -301,10 +306,10 @@ namespace Edwin {
 
         private void on_delete_range (Gtk.TextIter start, Gtk.TextIter end) {
             Gtk.TextIter iter;
-            for (uint n = 0; n < text_view.n_page_breaks; n++) {
-                get_iter_at_mark (out iter, text_view.get_nth_page_break (n));
+            for (uint n = 0; n < forced_page_breaks.length (); n++) {
+                get_iter_at_mark (out iter, get_nth_forced_page_break (n));
                 if (iter.compare (start) > 0 && iter.compare (end) <= 0) {
-                    text_view.remove_nth_page_break (n);
+                    remove_nth_forced_page_break (n);
                 }
             }
             deletion_in_progress = true;
@@ -466,6 +471,18 @@ namespace Edwin {
             @delete (ref match_start, ref iter);
         }
         
+        private void insert_forced_page_break (Gtk.TextIter where)
+            requires (where.starts_line ())
+        {
+            forced_page_breaks.append (create_mark (null, where, true));
+        }
+        
+        private void remove_nth_forced_page_break (uint n)
+            requires (n < forced_page_breaks.length ())
+        {
+            forced_page_breaks.remove (forced_page_breaks.nth_data (n));
+        }
+        
 /******************\
 |* PUBLIC METHODS *|
 \******************/
@@ -622,7 +639,7 @@ namespace Edwin {
             foreach (var tag in alignment_tags) {
                 remove_tag_undoable (tag, start, end);
             }
-            if (justification >= 0 && justification != text_view.get_default_attributes ().justification) {
+            if (justification >= 0 && justification != view.get_default_attributes ().justification) {
                 switch (justification) {
                 case Gtk.Justification.LEFT:
                     apply_tag (tag_aligned_left, start, end);
@@ -642,7 +659,7 @@ namespace Edwin {
 
         public Gtk.TextAttributes get_attributes_before (Gtk.TextIter where, out bool modified = null) {
             modified = false;
-            var attributes = text_view.get_default_attributes ();
+            var attributes = view.get_default_attributes ();
             var iter = where;
             if (iter.backward_char ()) {
                 modified = iter.get_attributes (attributes);
@@ -654,14 +671,14 @@ namespace Edwin {
             var iter = where;
             move_to_paragraph_start (ref iter);
             while (iter.ends_line () && iter.backward_char ());
-            var attributes = text_view.get_default_attributes ();
+            var attributes = view.get_default_attributes ();
             iter.get_attributes (attributes);
             return attributes.justification;
         }
 
         public Gdk.RGBA get_text_color (Gtk.TextIter where) {
             var iter = where;
-            Gdk.RGBA color = text_view.default_text_color;
+            Gdk.RGBA color = view.default_text_color;
             if (!iter.backward_char ()) {
                 return color;
             }
@@ -806,6 +823,12 @@ namespace Edwin {
                 }
                 replace_search_match (ref iter, replacement);
             }
+        }
+        
+        public unowned Gtk.TextMark get_nth_forced_page_break (uint n)
+            requires (n < forced_page_breaks.length ())
+        {
+            return forced_page_breaks.nth_data (n);
         }
         
     }

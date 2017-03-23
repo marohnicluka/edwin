@@ -57,9 +57,9 @@ namespace Edwin {
             }
         }
 
-/*************************\
-|* FIELDS AND PROPERTIES *|
-\*************************/
+/**********************\
+|* FIELDS AND SIGNALS *|
+\**********************/
 
         /* public properties */
         public File file { get; set; default = Utils.create_unsaved_document_file (); }
@@ -71,9 +71,9 @@ namespace Edwin {
         public bool can_redo { get; private set; default = false; }
         public bool user_action_in_progress { get; private set; default = false; }
         public bool doing_undo_redo { get { return redoable_action_in_progress || redoing_in_progress; } }
-        public unowned ToolBar toolbar { get { return main_window.dynamic_toolbar; } }
+        public unowned DynamicToolBar toolbar { get { return main_window.dynamic_toolbar; } }
         public unowned SearchBar searchbar { get { return main_window.searchbar; } }
-        public unowned TextBuffer buffer { get { return text_view.buffer as TextBuffer; } }
+        public unowned DocumentBuffer buffer { get { return view.buffer as DocumentBuffer; } }
         bool _modified;
         public bool modified {
             get { return _modified; }
@@ -92,7 +92,7 @@ namespace Edwin {
             set {
                 _check_spelling = value;
                 if (_check_spelling) {
-                    spell_checker.attach (text_view);
+                    spell_checker.attach (view);
                 } else {
                     spell_checker.detach ();
                 }
@@ -111,7 +111,7 @@ namespace Edwin {
 
         /* private fields */
         unowned MainWindow main_window;
-        TextView text_view;
+        DocumentView view;
         Gtk.TextBuffer undo_buffer;
         Gtk.TextBuffer redo_buffer;
         GtkSpell.Checker spell_checker;
@@ -132,8 +132,8 @@ namespace Edwin {
             Object (hadjustment: null, vadjustment: null);
             this.main_window = main_window;
             paper_size = new PaperSize.@default ();
-            text_view = new TextView (this);
-            add (text_view);
+            view = new DocumentView (this);
+            add (view);
             undo_buffer = new Gtk.TextBuffer (buffer.tag_table);
             redo_buffer = new Gtk.TextBuffer (buffer.tag_table);
             spell_checker = new GtkSpell.Checker ();
@@ -153,7 +153,7 @@ namespace Edwin {
             spell_checker.language_changed.connect (on_language_changed);
             buffer.modified_changed.connect (on_buffer_modified_changed);
             buffer.search_finished.connect (on_search_finished);
-            text_view.notify["has-focus"].connect (on_has_focus_changed);
+            view.notify["has-focus"].connect (on_has_focus_changed);
         }
 
 /*************\
@@ -182,7 +182,7 @@ namespace Edwin {
         }
         
         private void on_has_focus_changed () {
-            if (text_view.has_focus) {
+            if (view.has_focus) {
                 on_focused ();
             } else {
                 on_unfocused ();
@@ -432,9 +432,9 @@ namespace Edwin {
         private void set_defaults () {
             var lang = Environment.get_variable ("LANG");
             language = lang.substring (0, lang.index_of ("."));
-            var attributes = text_view.get_default_attributes ();
+            var attributes = view.get_default_attributes ();
             toolbar.set_text_font_desc (attributes.font);
-            toolbar.set_text_color (text_view.default_text_color);
+            toolbar.set_text_color (view.default_text_color);
             toolbar.set_paragraph_alignment (attributes.justification);
             Gtk.TextIter iter;
             buffer.get_start_iter (out iter);
@@ -575,7 +575,7 @@ namespace Edwin {
         }
 
         public new void focus () {
-            text_view.grab_focus ();
+            view.grab_focus ();
         }
         
         public void search () {
@@ -624,6 +624,10 @@ namespace Edwin {
             buffer.replace_all_search_matches (replacement);
             clear_search ();
             end_user_action ();
+        }
+        
+        public void scroll_to_cursor () {
+            view.scroll_to_cursor ();
         }
 
     }

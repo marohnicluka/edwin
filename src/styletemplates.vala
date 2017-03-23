@@ -46,7 +46,7 @@ namespace Edwin {
             return paragraph_styles.lookup (id);
         }
         
-        public static StyleTemplate @default (TextBuffer buffer) {
+        public static StyleTemplate @default (DocumentBuffer buffer) {
             var template = new StyleTemplate ();
             /* text body */
             var style = new ParagraphStyle (buffer, "text-body", _("Text Body"));

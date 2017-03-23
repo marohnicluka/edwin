@@ -13,11 +13,13 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	config.vala
 	edwin.vala
 	mainwindow.vala
-	toolbar.vala
+	maintoolbar.vala
+	dynamictoolbar.vala
 	searchbar.vala
 	document.vala
-	textbuffer.vala
-	textview.vala
+	documentbuffer.vala
+	documentview.vala
+	documentpreview.vala
 	papersize.vala
 	paragraphstyle.vala
 	styletemplates.vala

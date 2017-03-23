@@ -1,4 +1,4 @@
-/* textview.vala
+/* documentview.vala
  *
  * Copyright 2017 Luka Marohnić
  *
@@ -22,7 +22,7 @@ namespace Edwin {
 
     public const int DEFAULT_MARGIN = 12; // pixels
 
-    public class TextView : Gtk.TextView {
+    public class DocumentView : Gtk.TextView {
 
 /*************************\
 |* FIELDS AND PROPERTIES *|
@@ -30,17 +30,13 @@ namespace Edwin {
 
         public Gdk.RGBA default_text_color { get { return get_style_context ().get_color (0); } }
         public unowned Document doc { get; construct set; }
-        public uint n_page_breaks { get { return page_breaks.length (); } }
-        
-        List<unowned Gtk.TextMark> page_breaks;
         
 /****************\
 |* CONSTRUCTION *|
 \****************/
 
-        public TextView (Document doc) {
+        public DocumentView (Document doc) {
             this.doc = doc;
-            page_breaks = new List<unowned Gtk.TextMark> ();
             wrap_mode = Gtk.WrapMode.WORD_CHAR;
             left_margin = DEFAULT_MARGIN;
             right_margin = DEFAULT_MARGIN;
@@ -49,21 +45,28 @@ namespace Edwin {
             connect_signals ();
         }
         
-        public override Gtk.TextBuffer create_buffer () {
-            return new TextBuffer (this);
+        ~DocumentView () {
+
         }
         
-        ~TextView () {
-
+        public override Gtk.TextBuffer create_buffer () {
+            return new DocumentBuffer (this);
         }
-
+        
         private void connect_signals () {
             doc.notify["zoom"].connect (on_zoom_changed);
+            notify["has-focus"].connect (on_focus_changed);
         }
 
 /*************\
 |* CALLBACKS *|
 \*************/
+
+        private void on_focus_changed () {
+            if (has_focus) {
+                scroll_to_cursor ();
+            }
+        }
 
         private void on_zoom_changed () {
 
@@ -73,11 +76,12 @@ namespace Edwin {
 |* PRIVATE METHODS *|
 \*******************/
 
-        private void draw_page_breaks (Cairo.Context cr) {
+        private void draw_forced_page_breaks (Cairo.Context cr) {
             Gtk.TextIter iter;
             Gdk.Rectangle rect;
-            for (uint n = 0; n < n_page_breaks; n++) {
-                buffer.get_iter_at_mark (out iter, get_nth_page_break (n));
+            for (uint n = 0; n < (buffer as DocumentBuffer).n_forced_page_breaks; n++) {
+                var mark = (buffer as DocumentBuffer).get_nth_forced_page_break (n);
+                buffer.get_iter_at_mark (out iter, mark);
                 get_location (iter, out rect, Gtk.TextWindowType.TEXT);
                 var y = rect.y;
                 var width = get_allocated_width ();
@@ -94,7 +98,7 @@ namespace Edwin {
                 cr.restore ();
             }
         }
-
+        
 /******************\
 |* PUBLIC METHODS *|
 \******************/
@@ -102,10 +106,10 @@ namespace Edwin {
         public override void draw_layer (Gtk.TextViewLayer layer, Cairo.Context cr) {
             switch (layer) {
             case Gtk.TextViewLayer.ABOVE:
-            
+
                 break;
             case Gtk.TextViewLayer.BELOW:
-                draw_page_breaks (cr);
+                draw_forced_page_breaks (cr);
                 break;
             }
         }
@@ -131,25 +135,6 @@ namespace Edwin {
             scroll_mark_onscreen (buffer.get_insert ());
         }
     
-        public void insert_page_break (Gtk.TextIter where)
-            requires (where.starts_line ())
-        {
-            var mark = buffer.create_mark (null, where, true);
-            page_breaks.append (mark);
-        }
-        
-        public void remove_nth_page_break (uint n)
-            requires (n < n_page_breaks)
-        {
-            page_breaks.remove (page_breaks.nth_data (n));
-        }
-        
-        public unowned Gtk.TextMark get_nth_page_break (uint n)
-            requires (n < n_page_breaks)
-        {
-            return page_breaks.nth_data (n);
-        }
-        
     }
 
 }

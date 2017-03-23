@@ -23,24 +23,15 @@ namespace Edwin {
     public class MainWindow : Gtk.Window {
     
         public unowned App app;
+        public Gtk.Stack stack;
+        public Gtk.Viewport preview_viewport;
         public Document document;
         public Gtk.UIManager ui;
-        public Granite.Widgets.AppMenu app_menu;
-        public Gtk.HeaderBar main_toolbar;
         public SearchBar searchbar;
         public Gtk.Paned paned;
-        public ToolBar dynamic_toolbar;
-        public Gtk.ToolButton button_new;
-        public Gtk.ToolButton button_open;
-        public Gtk.ToolButton button_undo;
-        public Gtk.ToolButton button_redo;
-        public Gtk.ToolButton button_save;
-        public Gtk.ToolButton button_page_setup;
-        public Gtk.ToolButton button_print;
-        public Gtk.ToolButton button_export;
-        public Gtk.ToolButton button_properties;
-        public Gtk.ToggleToolButton button_search;
-        public Gtk.ToggleToolButton button_spelling;
+        public MainToolBar main_toolbar;
+        public DynamicToolBar dynamic_toolbar;
+        public DocumentPreview document_preview;
         public SimpleActionGroup win_actions;
         
         public MainWindow (App app) {
@@ -52,7 +43,6 @@ namespace Edwin {
             this.hide_titlebar_when_maximized = false;
             this.icon_name = "accessories-text-editor";
             init_actions ();
-            init_main_toolbar ();
             init_layout ();
             init_stylesheet ();
             connect_signals ();
@@ -74,71 +64,31 @@ namespace Edwin {
             insert_action_group ("win", win_actions);
         }
         
-        private void init_main_toolbar () {
-            main_toolbar = new Gtk.HeaderBar ();
-            main_toolbar.get_style_context ().add_class ("primary-toolbar");
-            main_toolbar.title = this.title;
-            main_toolbar.show_close_button = true;
-            set_titlebar (main_toolbar);
-            /* create main menu */
-            var menu = new Gtk.Menu.from_model (app.get_menu_model ("AppMenu"));
-            app_menu = new Granite.Widgets.AppMenu.with_app (app, menu);
-            app_menu.show_about.connect (app.show_about);
-            main_toolbar.pack_end (app_menu);
-            /* add buttons */
-            button_new = Utils.create_tool_button ("document-new", "NewDocument",
-                _("Add a new document"));
-            button_open = Utils.create_tool_button ("document-open", "OpenDocument",
-                _("Open a saved document"));
-            button_save = Utils.create_tool_button ("document-save", "SaveDocument",
-                _("Save document"));
-            button_export = Utils.create_tool_button ("document-export", "Export",
-                _("Export"));
-            button_print = Utils.create_tool_button ("document-print", "Print",
-                _("Print document"));
-            button_page_setup = Utils.create_tool_button ("document-page-setup", "PageSetup",
-                _("Page setup"));
-            button_properties = Utils.create_tool_button ("gtk-properties", "DocumentProperties",
-                _("Document properties"));
-            button_undo = Utils.create_tool_button ("edit-undo", "Undo",
-                _("Undo"));
-            button_redo = Utils.create_tool_button ("edit-redo", "Redo",
-                _("Redo"));
-            button_search = Utils.create_toggle_button ("edit-find", "Search",
-                _("Search"));
-            button_spelling = Utils.create_toggle_button ("tools-check-spelling", "CheckSpelling",
-                _("Check spelling"));
-            /* pack buttons */
-            main_toolbar.pack_start (button_new);
-            main_toolbar.pack_start (button_open);
-            main_toolbar.pack_start (new Gtk.SeparatorToolItem ());
-            main_toolbar.pack_start (button_page_setup);
-            main_toolbar.pack_start (button_properties);
-            main_toolbar.pack_start (new Gtk.SeparatorToolItem ());
-            main_toolbar.pack_start (button_undo);
-            main_toolbar.pack_start (button_redo);
-            main_toolbar.pack_end (new Gtk.SeparatorToolItem ());
-            main_toolbar.pack_end (button_export);
-            main_toolbar.pack_end (button_print);
-            main_toolbar.pack_end (button_save);
-            main_toolbar.pack_end (new Gtk.SeparatorToolItem ());
-            main_toolbar.pack_end (button_search);
-            main_toolbar.pack_end (button_spelling);
-        }
-        
         private void init_layout () {
-            searchbar = new SearchBar (win_actions);
-            dynamic_toolbar = new ToolBar ();
+            stack = new Gtk.Stack ();
+            main_toolbar = new MainToolBar ();
+            set_titlebar (main_toolbar);
             create_new_document ();
+            searchbar = new SearchBar (win_actions);
+            dynamic_toolbar = new DynamicToolBar ();
             var vbox = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
-            var paned = new Gtk.Paned (Gtk.Orientation.HORIZONTAL);
+            var document_box = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
+            var preview_scrolled = new Gtk.ScrolledWindow (null, null);
+            paned = new Gtk.Paned (Gtk.Orientation.HORIZONTAL);
             vbox.pack_start (searchbar, false);
-            vbox.pack_start (dynamic_toolbar, false);
-            vbox.pack_start (document);
+            document_box.pack_start (dynamic_toolbar, false);
+            document_box.pack_start (document);
             paned.add1 (document.outline);
-            paned.add2 (vbox);
+            paned.add2 (document_box);
             paned.position = 200;
-            this.add (paned);
+            stack.add_named (paned, "editor");
+            preview_viewport = new Gtk.Viewport (null, null);
+            preview_scrolled.add (preview_viewport);
+            preview_scrolled.expand = true;
+            stack.add_named (preview_scrolled, "preview");
+            stack.visible_child_name = "editor";
+            vbox.pack_start (stack);
+            add (vbox);
         }
         
         private void connect_signals () {
@@ -187,6 +137,9 @@ namespace Edwin {
             });
             searchbar.search_changed.connect (document.search);
             searchbar.stop_search.connect (document.clear_search);
+            main_toolbar.preview_close_request.connect (() => {
+                close_document_preview ();
+            });
         }
         
         public SimpleAction get_action (string name) {
@@ -205,6 +158,17 @@ namespace Edwin {
         
         public void show_document (Document doc) {
             
+        }
+        
+        public void close_document_preview (Gtk.TextIter? where_to_focus = null) {
+            document.focus ();
+            if (where_to_focus != null) {
+                document.buffer.place_cursor (where_to_focus);
+            }
+            var box = preview_viewport.get_child ();
+            assert (box is Gtk.EventBox);
+            box.destroy ();
+            stack.visible_child_name = "editor";
         }
         
         public void update_title () {
@@ -306,6 +270,20 @@ namespace Edwin {
         
         private void action_print_preview () {
             debug ("Print preview");
+            document_preview = new DocumentPreview (document);
+            document_preview.request_document_focus.connect ((where) => {
+                main_toolbar.preview_mode = false;
+                close_document_preview (where);
+            });
+            var box = new Gtk.EventBox ();
+            Utils.apply_stylesheet (box, "* { background-color: #efefef; }");
+            document_preview.valign = Gtk.Align.CENTER;
+            document_preview.halign = Gtk.Align.CENTER;
+            box.add (document_preview);
+            preview_viewport.add (box);
+            box.show_all ();
+            main_toolbar.preview_mode = true;
+            stack.visible_child_name = "preview";
         }
         
         private void action_print () {
@@ -356,7 +334,7 @@ namespace Edwin {
             action.set_state (@value);
             bool active = action.state.get_boolean ();
             searchbar.search_mode_enabled = active;
-            button_search.active = active;
+            main_toolbar.button_search.active = active;
         }
         
         private void change_state_check_spelling (SimpleAction action, Variant @value) {
@@ -364,7 +342,7 @@ namespace Edwin {
             action.set_state (@value);
             bool active = action.state.get_boolean ();
             document.check_spelling = active;
-            button_spelling.active = active;
+            main_toolbar.button_spelling.active = active;
         }
         
         const GLib.ActionEntry[] win_entries = {

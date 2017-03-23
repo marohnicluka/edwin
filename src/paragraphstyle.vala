@@ -23,13 +23,13 @@ namespace Edwin {
     public class ParagraphStyle : Object {
 
         public string name { get; construct set; }
-        public unowned TextBuffer buffer { get; construct set; }
+        public unowned DocumentBuffer buffer { get; construct set; }
         
         unowned Gtk.TextTag tag;
         unowned Gtk.TextTag tag_vspace_above;
         unowned Gtk.TextTag tag_vspace_below;
         
-        public ParagraphStyle (TextBuffer buffer, string id, string name) {
+        public ParagraphStyle (DocumentBuffer buffer, string id, string name) {
             tag = buffer.create_tag (@"paragraph-style:$id");
             tag_vspace_above = buffer.create_tag (@"internal:$id-vspace-above");
             tag_vspace_below = buffer.create_tag (@"internal:$id-vspace-below");
