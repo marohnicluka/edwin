@@ -25,6 +25,7 @@ vala_precompile(VALA_C ${EXEC_NAME}
 	styletemplates.vala
 	listchooser.vala
 	fontfamilychooser.vala
+	hyphenation.vala
 	settings.vala
 	utils.vala
 PACKAGES

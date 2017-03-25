@@ -23,6 +23,7 @@ namespace Edwin {
     /* settings */
     public SavedState saved_state;
     public Settings settings;
+    public Hyphenation.Manager hyphenation_manager;
 
     public class App : Granite.Application {
         
@@ -35,6 +36,8 @@ namespace Edwin {
         
         public string app_cmd_name { get { return _app_cmd_name; } }
         public string data_home_folder_unsaved { get { return _data_home_folder_unsaved; } }
+        
+        Cancellable cancellable;
         
         construct {
             flags |= ApplicationFlags.HANDLES_OPEN;
@@ -67,12 +70,27 @@ namespace Edwin {
             Granite.Services.Logger.initialize (app_cmd_name);
             Granite.Services.Logger.DisplayLevel = Granite.Services.LogLevel.DEBUG;
             /* initialize settings */
+            cancellable = new Cancellable ();
             saved_state = new SavedState ();
             settings = new Settings ();
+            hyphenation_manager = new Hyphenation.Manager (cancellable);
+            hyphenation_manager.patterns_loaded.connect ((n) => {
+                debug ("Hyphenation patterns for %d languages are available", n);
+                var patterns = hyphenation_manager.get_patterns_for_language ("en_US");
+                var breaks = patterns.get_possible_word_breaks ("preposterously");
+                print ("preposterously: ");
+                foreach (int b in breaks) {
+                    print (b.to_string () + " ");
+                }
+                print ("\n");
+            });
             /* get folder for storing unsaved files and create it if necessary */
             var user_data_dir = Environment.get_user_data_dir ();
             _data_home_folder_unsaved = Path.build_filename (user_data_dir, exec_name, "unsaved");
             create_unsaved_documents_directory ();
+            shutdown.connect (() => {
+                cancellable.cancel ();
+            });
         }
         
         private static App _instance = null;
@@ -99,7 +117,7 @@ namespace Edwin {
 			action.activate.connect (action_quit);
 			add_action (action);
         }
-
+        
 		public void action_quit () {
 			get_windows ().foreach ((win) => {
 				(win as MainWindow).on_quit ();
